@@ -6,7 +6,15 @@ This repo serves as a version control and for my dissertation research, and a gr
 
 I have a fondness for the antiquated or unpopular term, and usually use it without really knowing it. I realized that my use of the term "bimodal" to describe a network with two classes of nodes is uncommon, and that most people prefer "bipartite". Well, I didn't know most people prefer it until I consulted the Google Books n-gram viewer:
 ```html
+<pre>
+    <div class="container">
+        <div class="block two first">
+            <div class="wrap">
 <iframe name="ngram_chart" src="https://books.google.com/ngrams/interactive_chart?content=bimodal+network%2Cbipartite+network&year_start=1980&year_end=2010&corpus=15&smoothing=3&share=&direct_url=t1%3B%2Cbimodal%20network%3B%2Cc0%3B.t1%3B%2Cbipartite%20network%3B%2Cc0" width=900 height=500 marginwidth=0 marginheight=0 hspace=0 vspace=0 frameborder=0 scrolling=no></iframe>
+            </div>
+        </div>
+    </div>
+</pre>
 ```
 The sources for Google Books are probably not the right sample to answer this question definitely, but I'll take the clue and change my usage. No sense in losing an audience over a term preference. I think I preferred the monosyllabic "mode" to "partition".
 
