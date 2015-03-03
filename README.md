@@ -2,6 +2,14 @@
 
 This repo serves as a version control and for my dissertation research, and a great way to inspect my work in progress. The README will also be a makeshift blog where I will post developments to the project. Please feel free to send me an email at bambrose@ucla.edu if you have questions.
 
+####~ 3/3/2015 Use the popular term ~
+
+I have a fondness for the antiquated or unpopular term, and usually use it without really knowing it. I realized that my use of the term "bimodal" to describe a network with two classes of nodes is uncommon, and that most people prefer "bipartite". Well, I didn't know most people prefer it until I consulted the Google Books n-gram viewer:
+
+<iframe name="ngram_chart" src="https://books.google.com/ngrams/interactive_chart?content=bimodal+network%2Cbipartite+network&year_start=1980&year_end=2010&corpus=15&smoothing=3&share=&direct_url=t1%3B%2Cbimodal%20network%3B%2Cc0%3B.t1%3B%2Cbipartite%20network%3B%2Cc0" width=900 height=500 marginwidth=0 marginheight=0 hspace=0 vspace=0 frameborder=0 scrolling=no></iframe>
+
+The sources for Google Books are probably not the right sample to answer this question definitely, but I'll take the clue and change my usage. No sense in losing an audience over a term preference. I think I preferred the monosyllabic "mode" to "partition".
+
 ####~ 3/2/2015 Learning how to scale a record linking problem ~
 
 In my research I face the issue of finding citation code variations in the Web of Knowledge database. For a haystack of millions of citations there may be several thousand needles, or sets of citations that are probably variable addresses to a single reference. I refer ungenerously to these as coding errors, but from a data cleaning standpoint this is fair, even if these are not always due to transcription errors on the part of WOK coders. To start off my search for a good solution, I am consulting William W. Cohen's "mini-course on record linkage and matching", which with some scrolling can be found [here][miniRL].
