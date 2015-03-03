@@ -8,32 +8,30 @@ In my research I face the issue of finding citation code variations in the Web o
 
 A handful from the haystack may look like this:
 
->...
->FACT ACT INQ BOAR, 1893, 1 PROGR REP FACT ACT, P23    
->FACT ACT INQ BOAR, 1894, 2 PROGR REP FACT ACT, P5     
->FACT INSP COMM PE, 1902, 13 FACT INSP COMM PE, P387   
->FACT INV COMM, 1914, 3 REP FACT INV COMM, P304        
->FAIRP FINN NAT CH, 1924, P FAIRP FINN NAT CHU         
->FAIRP SUOM SYN CH, 1916, P FAIRP SUOM SYN CHU         
->FAIRP SUOM SYN CH, 1926, P FAIRP SUOM SYN CHU         
->FAIRP SUOM SYN SY, 1919, P FAIRP SUOM SYN SYN         
->FAIRP SUOM SYN SY, 1922, P FAIRP SUOM SYN SYN         
->FAM WELF ASS AM, 1929, PREL REP COMM UNPUB, P39       
->FAM WELF ASS AM, COMM FUT PROGR, P33                  
->FAM WELF ASS AM, DIV WORK PUBL PRIV A                 
->FAM WELF ASS, 1933, UN REL EXP                        
->FARM BOARD, STOKD W, P18                              
->FARM CRED ADM, 1934, 2 FARM CRED ADM, P6              
->FARM CRED ADM, 1935, MONTHL REP LOANS DIS             
->...
+* ...
+* FACT ACT INQ BOAR, 1893, 1 PROGR REP FACT ACT, P23    
+* FACT ACT INQ BOAR, 1894, 2 PROGR REP FACT ACT, P5     
+* FACT INSP COMM PE, 1902, 13 FACT INSP COMM PE, P387   
+* FACT INV COMM, 1914, 3 REP FACT INV COMM, P304        
+* FAIRP FINN NAT CH, 1924, P FAIRP FINN NAT CHU         
+* FAIRP SUOM SYN CH, 1916, P FAIRP SUOM SYN CHU         
+* FAIRP SUOM SYN CH, 1926, P FAIRP SUOM SYN CHU         
+* FAIRP SUOM SYN SY, 1919, P FAIRP SUOM SYN SYN         
+* FAIRP SUOM SYN SY, 1922, P FAIRP SUOM SYN SYN         
+* FAM WELF ASS AM, 1929, PREL REP COMM UNPUB, P39       
+* FAM WELF ASS AM, COMM FUT PROGR, P33                  
+* FAM WELF ASS AM, DIV WORK PUBL PRIV A                 
+* FAM WELF ASS, 1933, UN REL EXP                        
+* FARM BOARD, STOKD W, P18                              
+* FARM CRED ADM, 1934, 2 FARM CRED ADM, P6              
+* FARM CRED ADM, 1935, MONTHL REP LOANS DIS             
+* ...
 
 And a needle would look like this:
 
->
->DIMAGGIO P., 1983, AM SOCIOL REV, V47, P147
->DIMAGGIO P.J., 1983, AM SOCIOL REV, V48, P47
->DIMAGGIO PJ, 1983, AM SOCIOL REV, V48, P147
->
+* DIMAGGIO P., 1983, AM SOCIOL REV, V47, P147
+* DIMAGGIO P.J., 1983, AM SOCIOL REV, V48, P47
+* DIMAGGIO PJ, 1983, AM SOCIOL REV, V48, P147 
 
 My first attempt to solve the problem of finding these variation sets was inefficient. What was convenient to program in R using the [stringdist package][stringdist] was very computationally inefficient. Most obviously, I didn't take advantage of the fact that pairs are unordered for some string measures like Jaro-Winkler, and my implementation calculated the distance twice, once for each ordered pair. That embarassing misstep is easily avoided, but there are even more sophisticated approaches that eliminate redundancies even between pairs. These approaches rely on sorting the list and carrying results forward when the calculation is identical in a subsequent pair, as when the initial substrings of a series of strings are identical. A data structure called a trie is the solution, as explained [here][trie1].
 
