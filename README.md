@@ -29,9 +29,11 @@ A handful from the haystack may look like this:
 
 And a needle would look like this:
 
+>
 >DIMAGGIO P., 1983, AM SOCIOL REV, V47, P147
 >DIMAGGIO P.J., 1983, AM SOCIOL REV, V48, P47
 >DIMAGGIO PJ, 1983, AM SOCIOL REV, V48, P147
+>
 
 My first attempt to solve the problem of finding these variation sets was inefficient. What was convenient to program in R using the [stringdist package][stringdist] was very computationally inefficient. Most obviously, I didn't take advantage of the fact that pairs are unordered for some string measures like Jaro-Winkler, and my implementation calculated the distance twice, once for each ordered pair. That embarassing misstep is easily avoided, but there are even more sophisticated approaches that eliminate redundancies even between pairs. These approaches rely on sorting the list and carrying results forward when the calculation is identical in a subsequent pair, as when the initial substrings of a series of strings are identical. A data structure called a trie is the solution, as explained [here][trie1].
 
