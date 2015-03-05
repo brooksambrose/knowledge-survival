@@ -53,7 +53,558 @@ wok2db.f<-function(
 	wok2db
 }
 
-wok2bel.f<-function(
+CR2zCR.f<-function(
+)
+{
+library(stringdist)
+rm(list=ls())
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/grp.RData")
+t0<-proc.time()
+grp<-lapply(grp,unlist)
+l<-sapply(grp,length)
+max<-max(l)
+(tab<-table(l))
+grp[l<2|l>1000]<-NULL
+grp<-lapply(grp,FUN=function(x) {x<-na.omit(x);attributes(x)<-NULL;x})
+d<-lapply(
+	grp,FUN=function(x)
+{
+	if(length(x)<=100) {ret<-as.dist(stringdistmatrix(x,x,method="jw",p=.1,useNames=T))} else {ret<-as.dist(stringdistmatrix(x,x,method="jw",p=.1,useNames=T,ncores=4))}
+	ret
+}
+)
+q<-quantile(unlist(d),p=seq(0,1,.05))
+t1<-proc.time()
+t1-t0
+cbind(q)
+dmax<-sapply(d,max)
+d[dmax>.1]<-NULL
+rm(list=ls()[ls()!="d"])
+dl<-sqrt(sapply(d,length)*2)
+library(fastcluster)
+system.time(hd<-lapply(d,function(x) as.dendrogram(hclust(x))))
+nlhd<-sort(sapply(hd,nleaves),decreasing=T)
+hd<-hd[order(nlhd,decreasing=T)]
+
+save(hd,file="hd.RData")
+
+#troubling realizations about the sets, they overlap!!
+
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
+for(i in 1:length(hd)) {attributes(hd[[i]])$osamp<-list(i);attributes(hd[[i]])$og<-T}
+
+require(data.table)
+require(dendextend)
+require(stringdist)
+require(fastcluster)
+	
+print(length(hd))
+t0<-proc.time()
+hdt<-unlist(lapply(hd,labels))
+hdt<-sort(unique(hdt[duplicated(hdt)]))
+print(length(hdt))
+while(!!length(hdt)){
+hd<-hd[sapply(hd,length)!=0]
+hda<-data.table(i=unlist(mapply(rep,1:length(hd),sapply(hd,function(x) attributes(x)$members))),cr=unlist(lapply(hd,labels)),key="cr")
+hda<-hda[hdt,list(olap=list(i)),by="cr"]
+for(i in 1:nrow(hda)){
+	x<-unique(unlist(lapply(hd[hda$olap[[i]]],labels)))
+	if(!length(unlist(x))) next
+	osamp<-min(hda$olap[[i]])
+	hd[[osamp]]<-as.dendrogram(hclust(as.dist(stringdistmatrix(x,x,method="jw",p=.1,useNames=T))))
+	attributes(hd[[osamp]])$osamp<-unique(c(hda$olap[[i]],attributes(hd[[osamp]])$osamp))
+	attributes(hd[[osamp]])$og<-F
+	for(j in unique(setdiff(hda$olap[[i]],osamp))) hd[[j]]<-list()
+	cat("\r",round(i/nrow(hda),3),"\t\t",sep="")
+}
+hdt<-unlist(lapply(hd,labels))
+hdt<-sort(unique(hdt[duplicated(hdt)]))
+print(length(hdt))
+}
+hd<-hd[sapply(hd,length)!=0]
+print(length(hd))
+t1<-proc.time()
+round((t1-t0)/60,2)
+
+save(hd,file="hd.RData")
+
+############
+
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
+require(dendextend)
+require(data.table)
+t2<-proc.time()
+trg<-data.table(dl=sapply(hd,function(x) any(grepl(" ?((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9])),",labels(x))))) # has date (all true)
+trg[,vl:=sapply(hd,function(x) any(grepl(", V[0-9]",labels(x))))] #has volume
+trg[,pl:=sapply(hd,function(x) any(grepl(", P[0-9]+[A-Z]?$",labels(x))))] #has page (always last)
+trg[,sl:=sapply(hd,function(x) any(grepl(".*(((0[1-9])|(1[0-2]))((0[1-9])|([1-2][0-9])|(3[0-1]))).*",labels(x))))] #daily serial
+trg[,f3l:=sapply(hd,function(x) length(unique(substr(labels(x),1,3)))==1)]
+
+trg[,"d":=list(lapply(hd,function(x) {x<-na.omit(as.integer(sub(".*((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9])),.+","\\1",labels(x))));attributes(x)<-NULL;x}))]
+trg[,"v":=list(lapply(hd,function(x) {x<-na.omit(as.integer(sub(".+, V([0-9]+).*","\\1",labels(x))));attributes(x)<-NULL;x}))]
+trg[,"p":=list(lapply(hd,function(x) {x<-na.omit(as.integer(sub(".+, P([0-9]+).*","\\1",labels(x))));attributes(x)<-NULL;x}))]
+trg[,"s":=list(lapply(hd,function(x) {x<-na.omit(as.numeric(strptime(
+	paste(sub(".*((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9])).*","\\1",labels(x)),sub(".*(((0[1-9])|(1[0-2]))((0[1-9])|([1-2][0-9])|(3[0-1]))).*","\\1",labels(x)),sep="")
+	,"%Y%m%d")));attributes(x)<-NULL;x<-x/60/60/24;x
+}))] ## daily serial in days
+trg[,"h":=list(lapply(hd,get_branches_heights,sort=F))]
+trg[,"nc":=list(lapply(hd,function(x) nchar(labels(x))))]
+
+trg[,mxd:=sapply(d,max)]
+trg[,mnd:=sapply(d,min)]
+trg[,mxv:=sapply(v,max)]
+trg[,mnv:=sapply(v,min)]
+trg[,mxp:=sapply(p,max)]
+trg[,mnp:=sapply(p,min)]
+trg[,mxh:=sapply(h,max)]
+trg[,mnh:=sapply(h,min)]
+trg[,mxnc:=sapply(nc,max)]
+trg[,mnnc:=sapply(nc,min)]
+trg[,l:=sapply(hd,function(x) length(labels(x)))]
+
+trg[is.infinite(mxv),mxv:=NA]
+trg[is.infinite(mnv),mnv:=NA]
+trg[is.infinite(mxp),mxp:=NA]
+trg[is.infinite(mnp),mnp:=NA]
+
+
+trg[,`:=`(
+	dsd=sapply(d,sd)
+	,vsd=sapply(v,sd)
+	,psd=sapply(p,sd)
+	,ssd=sapply(s,sd)
+	,hsd=sapply(h,sd)
+	,ncsd=sapply(nc,sd)
+)]
+
+trg[,baz:=sapply(hd,function(x) any(grepl("^[A-Z]",labels(x))))] #begin letter
+trg[,b09:=sapply(hd,function(x) any(grepl("^((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9]))",labels(x))))] #begin date
+trg[,ca:=sapply(hd,function(x) all(grepl("^\\*",labels(x))))] #corp author source
+trg[,aca:=sapply(hd,function(x) any(grepl("^\\*",labels(x))))] #mixed corp author source
+trg[,aca:=aca&!ca]
+
+samp.c<-list()
+samp.c[which((is.na(trg$vsd))&is.na(trg$psd)&!trg$sl)]<-"nvnp"
+samp.c[which((!is.na(trg$vsd))&is.na(trg$psd)&!trg$sl)]<-"yvnp" 
+samp.c[which((is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl)]<-"nvyp" 
+samp.c[which((!is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl)]<-"yvyp" 
+samp.c[which(trg$sl)]<-"serial"
+samp.c<-factor(unlist(samp.c))
+trg[,samp.c:=samp.c]
+
+trg[,dsd0:=dsd==0]
+trg[,vsd0:=vsd==0]
+trg[,psd0:=psd==0]
+trg[,ssd0:=ssd==0]
+trg[,l2:=l==2]
+trg[,mxv3:=mxv<=3]
+trg[,osamp:=sapply(hd,function(x) sort(unique(unlist(attributes(x)$osamp))))]
+trg[,og:=sapply(hd,function(x) attributes(x)$og)]
+
+t3<-proc.time()
+round((t3-t2)/60,2)
+round((t3-t0)/60,2)
+
+trg[,osampl1:=unlist(sapply(osamp,min))]
+trg[sapply(osamp,function(x) length(x)>1),osampl1:=list(NA)]
+trg[,osampl1:=unlist(osampl1)]
+setkey(trg,osampl1)
+trg[,nsamp:=1:nrow(trg)]
+
+if(F) {
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/sample.RData")
+	attributes(trg)$samp<-samp
+	save(trg,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/triage.RData")
+}
+
+##########
+
+#calculate quantiles
+if(F) {
+cen<-lapply(trg[,list(dsd,vsd,psd,ssd,hsd,ncsd,mxd,mnd,mxv,mnv,mxp,mnp,mxh,mnh,mxnc,mnnc,l)],function(x) quantile(x[is.finite(x)],p=seq(0.01,1,.01),na.rm=T))
+
+names(cen)<-c("d","v","p","s","h","nc","mxd","mnd","mxv","mnv","mxp","mnp","mxh","mnh","mxnc","mnnc","l")
+trg[,`:=`(
+	dsp=sapply(dsd,function(x) max(which(cen$d<=x))) # lower is better
+	,vsp=sapply(vsd,function(x) max(which(cen$v<=x))) # lower is better
+	,psp=sapply(psd,function(x) max(which(cen$p<=x))) # lower is better
+	,ssp=sapply(ssd,function(x) max(which(cen$s<=x))) # lower is better
+	,hsp=sapply(hsd,function(x) max(which(cen$h<=x))) # lower might not be better, but absolute is more useful
+	,ncsp=sapply(ncsd,function(x) max(which(cen$nc<=x))) # lower might not be better, but absolute
+	
+	,mxvsp=sapply(mxv,function(x) max(which(cen$mxv<=x))) # if higher than three, assume not a book, percentile not very useful
+	,mnvsp=sapply(mnv,function(x) max(which(cen$mnv<=x))) # if higher than three, assume not a book, percentile not very useful
+	,mxpsp=sapply(mxp,function(x) max(which(cen$mxp<=x))) # won't use, if one assume intro
+	,mnpsp=sapply(mnp,function(x) max(which(cen$mnp<=x))) # won't use
+	,mxhsp=sapply(mxh,function(x) max(which(cen$mxh<=x))) # lower is better
+	,mnhsp=sapply(mnh,function(x) max(which(cen$mnh<=x))) # lower is better
+	,mxncsp=sapply(mxnc,function(x) 100-max(which(cen$mxnc<=x))) # higher is better, so subtracted percentile from 100, so lower is better. Min is more useful
+	,mnncsp=sapply(mnnc,function(x) 100-max(which(cen$mnnc<=x))) # higher is better, so subtracted percentile from 100, so lower is better. Use instead of max
+
+	,lsp=sapply(l,function(x) 100-max(which(cen$l<=x))) # higher is better, so subtracted percentile from 100, so lower is better.
+)]
+
+trg[dsd==0,dsp:=0]
+trg[vsd==0,vsp:=0]
+trg[psd==0,psp:=0]
+trg[ssd==0,ssp:=0]
+
+trg[is.na(dsd),dsd:=Inf]
+trg[is.na(vsd),vsd:=Inf]
+trg[is.na(psd),psd:=Inf]
+trg[is.na(ssd),ssd:=Inf]
+trg[is.na(hsd),hsd:=Inf]
+trg[is.na(mxv),mxv:=Inf]
+trg[is.na(mnv),mnv:=Inf]
+trg[is.na(mxp),mxp:=Inf]
+trg[is.na(mnp),mnp:=Inf]
+
+trg[dsp==-Inf,dsp:=Inf]
+trg[vsp==-Inf,vsp:=Inf]
+trg[psp==-Inf,psp:=Inf]
+trg[ssp==-Inf,ssp:=Inf]
+trg[hsp==-Inf,hsp:=Inf]
+trg[ncsp==-Inf,ncsp:=Inf]
+trg[mxvsp==-Inf,mxvsp:=Inf]
+trg[mnvsp==-Inf,mnvsp:=Inf]
+trg[mxpsp==-Inf,mxpsp:=Inf]
+trg[mnpsp==-Inf,mnpsp:=Inf]
+trg[mxhsp==-Inf,mxhsp:=Inf]
+trg[mnhsp==-Inf,mnhsp:=Inf]
+trg[mxncsp==-Inf,mxncsp:=Inf]
+trg[mnncsp==-Inf,mnncsp:=Inf]
+
+trg[,ap:=mapply(
+	function(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp) 
+		mean(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp)[
+			is.finite(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp))
+		])
+	,dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp
+)]
+
+trg[,mp:=mapply(
+	function(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp) 
+		max(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp)[
+			is.finite(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp))
+		])
+	,dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp
+)]
+
+t1<-proc.time()
+t1-t0
+lapply(hd[head(order(trg$ap),10)],labels)
+trg[head(order(trg$ap),10)]
+lapply(hd[tail(order(trg$ap),10)],labels)
+trg[tail(order(trg$ap),10)]
+#attributes(trg)$samp<-sample(1:nrow(trg),1000)
+for(i in c("dsd","vsd","psd")) trg[,paste(i,"z",sep=""):=trg[[i]]==0,with=F]
+data.frame(cen)
+lapply(trg[,list(dsd,vsd,psd,ssd,hsd)], hist)
+#surefire?
+lapply(hd[sample(which(trg$dsd==0&trg$vsd==0&trg$psd==0&trg$ncsd==0&trg$l>2),10)],function(x) cat(c(labels(x),"\n"),sep="\n"))
+c<-75
+t<-function(c) {
+	(trg$dsd<=cen$d[c]|is.infinite(trg$dsd))
+	&(trg$vsd<=cen$v[c]|is.infinite(trg$vsd))
+	&(trg$psd<=cen$p[c]|is.infinite(trg$psd))
+	&(trg$hsd<=cen$h[c])
+	&(trg$ncsd<=cen$nc[c])
+}
+lapply(hd[sample(which(t(c)),10)],function(x) cat(c(labels(x),"\n"),sep="\n"))
+where2drawtheline<-data.frame(m=round(sapply(1:100,function(c) mean(t(c)))*100,1),n=sapply(1:100,function(c) sum(t(c))))
+plot(where2drawtheline$n,type="l")
+t75<-t(c)
+data.frame(lapply(cen,round,3))
+
+}
+
+#dl has date
+#vl has volume
+#pl has page
+#sl daily serial
+#d date list
+#v volume list
+#p page list
+#s date in seconds
+#h dedrogram heights list
+#mxv max volume
+#mnv min volume
+#mxh max height
+#mnh min height
+#l length, number of leaves/cases/citations
+#dsd date standard deviation
+#vsd volume standard deviation
+#psd page standard deviation
+#ssd seconds standard deviation
+#hsd height standard deviation
+#dsp percentile of date standard deviation 
+#vsp percentile of volume standard deviation
+#psp percentile of page standard deviation
+#ssp percentile of seconds standard deviation
+#hsp percentile of heights standard deviation
+#mxvsp percentile of max volume
+#mnvsp percentile of min volume
+#mxhsp percentile of max height
+#mnhsp percentile of min height
+#lsp percentile of length/leaves/citations
+#ap average of percentiles, omitting Inf
+#baz log begins with a letter 
+#b09 log beings with date
+#ca corp author source
+#aca mixed corporate author source
+
+
+##
+
+
+####### 
+
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/FirstTraining_nvnp+/mastersets.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/triage.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/sample.RData")
+library(data.table)
+
+hd<-hd[attributes(trg)$samp]
+train<-trg[attributes(trg)$samp]
+train[,samp:=samp]
+train[,good:=sapply(sets,length)==1&sapply(sets,function(x) length(unlist(x)))==sapply(hd,function(x) attributes(x)$members)]
+train<-train[,list(good,vl,pl,sl,dsd0,vsd0,psd0,dsd,vsd,psd,l,l2,f3l,mxv3,ncsd,baz,mxh,mnnc,samp)]
+
+#### really just do 4 different models to avoid missingness
+
+(less<-table(data.frame(vna=is.na(train$vsd)&!train$sl,pna=is.na(train$psd)&!train$sl)))
+round(prop.table(less)*100,2)
+
+### expanded sample
+if(F){
+nvnp<-list(trgl=(is.na(trg$vsd))&is.na(trg$psd)&!trg$sl,trainl=(is.na(train$vsd))&is.na(train$psd)&!train$sl)
+yvnp<-list(trgl=(!is.na(trg$vsd))&is.na(trg$psd)&!trg$sl,trainl=(!is.na(train$vsd))&is.na(train$psd)&!train$sl)
+nvyp<-list(trgl=(is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl,trainl=(is.na(train$vsd))&!is.na(train$psd)&!train$sl)
+yvyp<-list(trgl=(!is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl,trainl=(!is.na(train$vsd))&!is.na(train$psd)&!train$sl)
+
+nvnp$samp$old<-intersect(samp,which(nvnp$trgl))
+nvnp$samp$new<-integer(0)
+
+yvnp$samp$old<-intersect(samp,which(yvnp$trgl))
+yvnp$samp$new<-sample(setdiff(which(yvnp$trgl),samp),500-length(yvnp$samp$old))
+
+nvyp$samp$old<-intersect(samp,which(nvyp$trgl))
+nvyp$samp$new<-sample(setdiff(which(nvyp$trgl),samp),500-length(nvyp$samp$old))
+
+yvyp$samp$old<-intersect(samp,which(yvyp$trgl))
+yvyp$samp$new<-sample(setdiff(which(yvyp$trgl),samp),500-length(yvyp$samp$old))
+
+cleans<-list(nvnp=nvnp,yvnp=yvnp,nvyp=nvyp,yvyp=yvyp)
+#whoops<-cleans
+if(F) save(whoops,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/whoops.RData")
+
+}
+
+
+
+
+
+######## oh dear
+bad<-read.table(file = "1900-2010FuzzySets/yvnp/whoops_bad.tab", sep = "\t", header = F, stringsAsFactors = FALSE)
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/yvnp/mastersets.RData")
+
+source("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/nvyp/nvyp_bads.R")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/nvyp/mastersets.RData")
+bad<-nvypb
+
+search<-sapply(sets,function(x) unlist(x)[1])
+if(all(bad[[1]]==which(sapply(sets,function(x) length(unlist(x)))<2))){
+	for(i in 1:nrow(bad)) if(is.null(search[[bad[i,1]]])) search[[bad[i,1]]]<-as.character(bad[i,2])
+}
+search<-unlist(search)
+
+#load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
+hdi<-sapply(hd,function(x) labels(x)[1])
+library(data.table)
+hdi<-data.table(i=1:length(hdi),cr=unlist(hdi))
+#whps<-hdi[search]
+
+library(stringdist)
+sdm<-stringdistmatrix(search,hdi$cr,useNames=T,ncores=4,method="jw",p=.1)
+sdml<-apply(sdm,1,function(x) which(x==min(x)))
+setkey(trg,osampl1)
+trg[list(sapply(sdml,function(x) x[1])),.N,by=og]
+nsdml<-list()
+for(i in which(!sdml%in%trg$osampl1)){
+	nsdml[[i]]<-min(unlist(trg$osamp[sapply(trg$osamp,function(x) sdml[[i]][1]%in%x)]))
+}
+if(all(which(!sdml%in%trg$osampl1)==which(sapply(nsdml,length)==1))) sdml[!sdml%in%trg$osampl1]<-unlist(nsdml)
+trg[list(sapply(sdml,function(x) x[1])),.N,by=og]
+
+### update last whoops
+#load(grep("whoops.RData",list.files("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data",recursive=T,full.names=T),value=T))
+whoops$nvnp$samp$new<-integer(0)
+lapply(whoops,function(x) sapply(x$samp,length))
+setkey(trg,nsamp)
+#whoops$yvnp$samp$new<-trg[list(sdml)]$osampl1
+whoops$nvyp$samp$new<-trg[list(sdml)]$osampl1
+setkey(trg,osampl1)
+trg[,hand:=F]
+trg[list(unlist(lapply(whoops,function(x) x$samp))),hand:=T]
+
+##### attach samples to trg
+setl<-grep("mastersets",list.files("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets",recursive=T,full.names=T),value=T)
+for(i in setl){
+	load(i)
+	whoops[[sub(".+([ny]v[ny]p).+","\\1",i)]]$sets<-sets
+}
+
+
+
+
+
+save(trg,file="triage.RData")
+
+
+
+
+read.table()
+
+	sets<-list()
+	up<-list()
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/cleans.RData")
+#	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/mastersets.RData")
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/progress.RData")
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
+	library(dendextend)
+	library(data.table)
+	hd<-hd[yvyp$samp$new]
+
+	nlhd<-sort(sapply(hd,nleaves),decreasing=T)
+	tt<-cumsum(nlhd)
+	tt<-sum(nlhd)-tt
+
+	source("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/strdist.dend.picker.R")
+	for(i in (length(sets)+1):length(hd)){
+		up$beg[[i]]<-as.character(Sys.time())
+		t0<-proc.time()
+		#Sys.sleep(rpois(1, lambda = .5)+1)
+		sets[[i]]<-strdist.dend.picker(hd[[i]],out=paste("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets",.Platform$file.sep,"hd",i,"-",sep=""))
+		t1<-proc.time()
+		up$et[[i]]<-t1-t0
+		up$rps[[i]]<-nlhd[i]/up$et[[i]]["elapsed"] #rate (per second)
+	
+		mph<-mean(unlist(up$rps))*60*60
+		rph<-up$rps[[i]]*60*60
+		cat(
+		ifelse(rph>=mph,"\n:) ","\n:( "),round(i/length(hd)*100,1)," Rate(Avg): ",round(rph,1),"(",round(mph,1),") /hr\tFinished in ",round(tt[i]/rph,1),"(",round(tt[i]/mph,1),")"," hrs or ",round(tt[i]/rph/4,1),"(",round(tt[i]/mph/4,1),")"," 4 hr days"
+		,sep="")
+		flush.console()
+		save(sets,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/mastersets.RData")
+		save(up,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/progress.RData")
+	}
+
+### analysis
+
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/sample.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/triage.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/cleans.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/FirstTraining_nvnp+/mastersets.RData")
+
+for(i in c("nvnp","yvnp","nvyp","yvyp")){
+traino<-train[cleans[[i]]$trainl,list(good,dsd0,vsd0,psd0,dsd,vsd,psd,l,l2,f3l,mxv3,ncsd,baz,mxh,mnnc)]
+load(paste(grep(i,list.dirs("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets",recursive=F),value=T),"mastersets.RData",sep=.Platform$file.sep))
+hdn<-hd[cleans[[i]]$samp$new]
+trainn<-trg[cleans[[i]]$samp$new]
+trainn[,good:=sapply(sets,length)==1&sapply(sets,function(x) length(unlist(x)))==sapply(hdn,function(x) attributes(x)$members)]
+trainn<-trainn[,list(good,dsd0,vsd0,psd0,dsd,vsd,psd,l,l2,f3l,mxv3,ncsd,baz,mxh,mnnc)]
+trainn[,samp:=cleans[[i]]$samp$new]
+cleans[[i]]$dat<-rbindlist(list(traino,trainn),use.names=T,fill=T)
+narms<-names(cleans[[i]]$dat)[sapply(cleans[[i]]$dat,function(x) any(is.na(x)))]
+for(j in narms) cleans[[i]]$dat[,j:=NULL,with=F]
+}
+
+library(MASS)
+
+for(i in c("nvnp","yvnp","nvyp","yvyp")){
+	cleans[[i]]$fit<-glm(good~.
+		#as.formula(paste(sub("\\+","~",paste(grep("0",names(cleans[[i]]$dat),value=T,invert=T),collapse=" + ")),paste("(",paste(grep("0",names(cleans[[i]]$dat),value=T),collapse=" + "),")^2",sep=""),"0",sep=" + "))
+		,family=binomial(link="cloglog"),data=cleans[[i]]$dat)
+	cleans[[i]]$stp<-stepAIC(cleans[[i]]$fit,direction="both")
+	#cleans[[i]]$stp<-cleans[[i]]$fit
+	cleans[[i]]$hat<-predict(cleans[[i]]$stp,cleans[[i]]$dat,type="response")
+	cleans[[i]]$hatc<-cut(cleans[[i]]$hat,breaks=seq(0,1,.1))
+	cleans[[i]]$tab$c<-table(data.frame(cleans[[i]]$hatc,cleans[[i]]$dat$good))
+	cleans[[i]]$tab$r<-round(prop.table(cleans[[i]]$tab$c,margin=1)*100,2)
+	cleans[[i]]$tab$t<-round(prop.table(cleans[[i]]$tab$c)*100,2)
+}
+
+for(i in c("nvnp","yvnp","nvyp","yvyp")) {
+	cat("\n\n#################################",i,round(mean(cleans[[i]]$trgl)*100,2),"\b%",sum(cleans[[i]]$trgl),"#################################\n\n")
+	print(cbind(
+	r=cleans[[i]]$tab$r
+	,t=cleans[[i]]$tab$t
+	,c=cleans[[i]]$tab$c))
+	slt<-split(lapply(hd[c(cleans[[i]]$samp$old,as.integer(cleans[[i]]$samp$new))],labels),f=list(cleans[[i]]$dat$good,cleans[[i]]$hatc))
+	for(j in names(slt)) {cat("\n");cat(j,unlist(sample(ifelse(!length(slt[[j]]),"none",slt[[j]]),1)),sep="\n")}
+	print(summary(cleans[[i]]$fit))
+	print(summary(cleans[[i]]$stp))
+	print(cleans[[i]]$stp$anova)
+}
+
+save(cleans,file="clean_fits.RData")
+
+
+
+
+for(i in c("nvnp","yvnp","nvyp","yvyp")){
+	cleans[[i]]$tab$c<-table(data.frame(cut(cleans[[i]]$hat,10),cleans[[i]]$dat$good))
+	cleans[[i]]$tab$r<-round(prop.table(cleans[[i]]$tab$c,margin=1)*100,2)
+	cleans[[i]]$tab$t<-round(prop.table(cleans[[i]]$tab$c)*100,2)
+}
+
+	
+library(mi)
+mitrainog<-data.table(data.frame(lapply(trainog, function(x) as.numeric(replace(x, is.infinite(x),NA)))))
+mitrainog<-mi(mitrainog,n.imp=10,n.iter=100)
+
+library(SuperLearner)
+slfit<-SuperLearner(Y=as.numeric(trainog$good),X=,SL.library=c("SL.glm"),family=binomial(link="cloglog"),verbose=T)
+
+
+if(F){
+terms<-list()
+for(j in 1:10){
+#impute missing data, badly
+for(i in which(sapply(train,function(x) any(is.infinite(x))))) train[is.infinite(train[[i]]),i:=sample(train[[i]][is.finite(train[[i]])],sum(is.infinite(train[[i]])),replace=T),with=F]
+#http://plantecology.syr.edu/fridley/bio793/glm.html
+terms[[j]]<-cllfit.stp$formula
+cat("\r",round(j/10,3),sep="")
+}
+terml<-lapply(terms,function(x) attributes(terms(x))$term.labels)
+
+(form<-as.formula(paste("good",paste(unique(unlist(terml)),collapse=" + "),sep=" ~ ")))
+
+train<-copy(trainog)
+for(i in which(sapply(train,function(x) any(is.infinite(x))))) train[is.infinite(train[[i]]),i:=sample(train[[i]][is.finite(train[[i]])],sum(is.infinite(train[[i]])),replace=T),with=F]
+
+
+cllfit.stp<-glm(form,family=binomial(link="cloglog"),data=train)
+coef<-list(cllfit.stp$coefficients)
+train<-copy(trainog)
+t2<-proc.time()
+for(j in 2:1000) {
+	for(i in which(sapply(train,function(x) any(is.infinite(x))))) train[is.infinite(train[[i]]),i:=sample(train[[i]][is.finite(train[[i]])],sum(is.infinite(train[[i]])),replace=T),with=F]
+	coef[[j]]<-glm(form,family=binomial(link="cloglog"),data=train)$coefficients
+	train<-copy(trainog)
+	cat("\r",round(j/1000,3),sep="")
+}
+t3<-proc.time()
+(t3-t2)/60
+coef<-data.frame(do.call(rbind,coef))
+pkdens.coef<-apply(coef,2,function(x) {y<-density(x);y<-y$x[which.max(y$y)];y})
+den<-apply(coef,2,density)
+}
+}
+
+db2bel.f<-function(
 	wok2db
 	,out=stop("Specify output directory for your project.")
 	,height=2
@@ -77,22 +628,22 @@ out
 if(!any(ls_or_ld%in%c("ls","ld"))) stop("Specify Levenshtein similarity (\"ls\") or distance (\"ld\").")
 
 ### draw only citation edge information from wok2db ###
-wok2bel<-list()
+db2bel<-list()
 wok2db<-data.table(wok2db)
 setkey(wok2db,fields)
-wok2bel$bel<-data.frame(wok2db[J("CR")])[,c("b.ind.","b")]
+db2bel$bel<-data.frame(wok2db[J("CR")])[,c("b.ind","b")]
 rm("wok2db")
 
 ### impose formatting and nomenclature ###
-wok2bel$bel[[1]]<-as.character(wok2bel$bel[[1]])
-wok2bel$bel[[2]]<-as.character(wok2bel$bel[[2]])
-rownames(wok2bel$bel)<-NULL
-names(wok2bel$bel)<-c("ut","cr")
-if(trim_doi) wok2bel$bel$cr<-sub(", DOI .+","",wok2bel$bel$cr) #remove DOI
-if(capitalize) wok2bel$bel$cr<-gsub("(\\w)","\\U\\1",wok2bel$bel$cr,perl=T) #capitalize
-wok2bel$bel<-wok2bel$bel[order(wok2bel$bel$ut,wok2bel$bel$cr),] #sort
+db2bel$bel[[1]]<-as.character(db2bel$bel[[1]])
+db2bel$bel[[2]]<-as.character(db2bel$bel[[2]])
+rownames(db2bel$bel)<-NULL
+names(db2bel$bel)<-c("ut","cr")
+if(trim_doi) db2bel$bel$cr<-sub(", DOI .+","",db2bel$bel$cr) #remove DOI
+if(capitalize) db2bel$bel$cr<-gsub("(\\w)","\\U\\1",db2bel$bel$cr,perl=T) #capitalize
+db2bel$bel<-db2bel$bel[order(db2bel$bel$ut,db2bel$bel$cr),] #sort
 
-tab<-table(wok2bel$bel$cr)
+tab<-table(db2bel$bel$cr)
 if(cut_samp_def>0){
 	#cut highest degree citations, argument is the length of the list in descending order of frequency
 	cat("\nEnter -indices separated by spaces- to reject high degree citations such as those defining the sample, or -enter- to reject none.\n")
@@ -103,16 +654,16 @@ if(cut_samp_def>0){
 	if(u!=""){
 		u<-unlist(strsplit(u," "))
 		u<-as.integer(u)
-		if(any(is.na(u))) {stop("\nTry again.")} else {wok2bel$bel<-wok2bel$bel[!wok2bel$bel$cr%in%drop[u],];tab<-tab[!names(tab)%in%drop[u]]}
+		if(any(is.na(u))) {stop("\nTry again.")} else {db2bel$bel<-db2bel$bel[!db2bel$bel$cr%in%drop[u],];tab<-tab[!names(tab)%in%drop[u]]}
 	}
 }
 
-{wok2bel<-list(bel=wok2bel$bel);save(wok2bel,file=paste(out,.Platform$file.sep,"wok2bel.RData",sep=""))}
+{db2bel<-list(bel=db2bel$bel);save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))}
 
 if(man_recode&is.null(saved_recode)){
 	compare<-function(v) all(sapply(as.list(v[-1]),FUN=function(z){identical(z,v[1])}))
 	require(stringdist)
-	wok2bel[["sets"]]<-list()
+	db2bel[["sets"]]<-list()
 	cod<-sort(names(tab))
 	if(!"hoff2fuz.RData"%in%list.files(out)){
 		cat("\nCreating fuzzy citation sets requires string dissimilarity and clustering calculations that can take a long time. Do you want to continue on this machine?\n\t-any key- to continue.\n\t-n- to stop and export an executable Hoffman2 script.")
@@ -293,7 +844,7 @@ if(!manual_audit){
 				u<-as.integer(u)
 				if(any(is.na(u))) {cat("\nTry again.")} else {veto<-c(veto,e[u]);e<-e[-u];abline(h=ht[i],col="red")}
 			}
-		{wok2bel[["sets"]]<-sets;save(sets,file=paste(out,.Platform$file.sep,"wok2bel_sets.RData",sep=""))}
+		{db2bel[["sets"]]<-sets;save(sets,file=paste(out,.Platform$file.sep,"db2bel_sets.RData",sep=""))}
 		}
 		if(u=="x"){
 			#drop<-NULL
@@ -313,45 +864,45 @@ if(!manual_audit){
 		if(u!="r") {sets<-c(sets,e)} else {abline(h=ht[i],col="red")}
 	}
 	for(j in 1:length(sets)) sets[[j]]<-cod[sets[[j]]]
-	{wok2bel[["sets"]]<-sets;save(wok2bel,file=paste(out,.Platform$file.sep,"wok2bel.RData",sep=""));save(sets,file=paste(out,.Platform$file.sep,"wok2bel_sets.RData",sep=""))}
+	{db2bel[["sets"]]<-sets;save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""));save(sets,file=paste(out,.Platform$file.sep,"db2bel_sets.RData",sep=""))}
 }
 {oc<-sum(tab);cat("\n","Original total acts of reference: ",oc,sep="")}
 if(man_recode){
-	if(!is.null(saved_recode)) wok2bel$sets<-saved_recode
-	wok2bel$bel<-cbind(wok2bel$bel,zcr=wok2bel$bel[,2])
-	wok2bel$bel$zcr<-as.character(wok2bel$bel$zcr)
-	ub<-length(unique(wok2bel$bel$cr))
+	if(!is.null(saved_recode)) db2bel$sets<-saved_recode
+	db2bel$bel<-cbind(db2bel$bel,zcr=db2bel$bel[,2])
+	db2bel$bel$zcr<-as.character(db2bel$bel$zcr)
+	ub<-length(unique(db2bel$bel$cr))
 	pre<-sort(unlist(c(0:9,strsplit("! \" # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \\ ] ^ _ ` { | } ~"," "),letters,LETTERS)))[1]
-	for(i in 1:length(wok2bel$sets)) wok2bel$bel[wok2bel$bel[,3]%in%wok2bel$sets[[i]],3]<-paste(pre,"z",formatC(i,width=nchar(as.character(length(wok2bel$sets))),format="d",flag="0"),sep="")
+	for(i in 1:length(db2bel$sets)) db2bel$bel[db2bel$bel[,3]%in%db2bel$sets[[i]],3]<-paste(pre,"z",formatC(i,width=nchar(as.character(length(db2bel$sets))),format="d",flag="0"),sep="")
 
-	wok2bel$undup<-!duplicated(wok2bel$bel[,c("ut","zcr")])
-	ubu<-length(unique(wok2bel$bel$cr[wok2bel$undup]))
-	if(any(!wok2bel$undup)) cat("\n",sum(!wok2bel$undup)," within-record duplicates after fuzzy replacement.","\nActually unique: ",ubu," / ",ub," ; ",ub-ubu," or ",100-round(ubu/ub*100,digits=2),"% fewer.",sep="")
+	db2bel$undup<-!duplicated(db2bel$bel[,c("ut","zcr")])
+	ubu<-length(unique(db2bel$bel$cr[db2bel$undup]))
+	if(any(!db2bel$undup)) cat("\n",sum(!db2bel$undup)," within-record duplicates after fuzzy replacement.","\nActually unique: ",ubu," / ",ub," ; ",ub-ubu," or ",100-round(ubu/ub*100,digits=2),"% fewer.",sep="")
 
-	save(wok2bel,file=paste(out,.Platform$file.sep,"wok2bel.RData",sep=""))
-	ua<-length(unique(wok2bel$bel$zcr))
+	save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
+	ua<-length(unique(db2bel$bel$zcr))
 	cat("\nUnique after fuzzy replacement: ",ua," / ",ubu,"; ",ubu-ua," fewer or ",100-round(ua/ubu*100,digits=3),"% nodes conserved.",sep="")
 }
 if(trim_pendants){
 	pb<-sum(tab==1)
 	tt<-sum(tab)
 	pend<-names(tab[tab==1])
-	wok2bel$pend<-!wok2bel$bel$cr%in%pend
+	db2bel$pend<-!db2bel$bel$cr%in%pend
 	if(man_recode){
-		tab<-table(wok2bel$bel$zcr[wok2bel$undup])
+		tab<-table(db2bel$bel$zcr[db2bel$undup])
 		pa<-sum(tab==1)
 		pend<-names(tab[tab==1])
-		wok2bel$zpend<-!wok2bel$bel$zcr%in%pend
+		db2bel$zpend<-!db2bel$bel$zcr%in%pend
 	}
 	cat("\nNumber of pendants in original coding: ",pb," / ",oc," or ",round(1-(pb/oc),digits=3)*100,"% remaining after dropping pendants.",sep="")
 	if(trim_pendants&man_recode) cat("\nNumber of pendants remaining after fuzzy replacement: ",pa," / ",tt," or ",round((1-(pa/tt))*100,digits=2),"%; ",round((pb-pa)/tt,digits=3)*100,"% or ",pb-pa," fewer than original coding.",sep="")
 }
-save(wok2bel,file=paste(out,.Platform$file.sep,"wok2bel.RData",sep=""))
-wok2bel
+save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
+db2bel
 }
 
 bel2mel.f<-function(
-	wok2bel=NULL
+	db2bel=NULL
 	,subset=NULL
 	,type=c("utel","crel")
 	,out=stop("Specify output directory for your project.")
@@ -364,27 +915,27 @@ bel2mel.f<-function(
 	
 	#subset should be a vector of UT
 	bel2mel<-list()
-	if(is.null(wok2bel)&"wok2bel.RData"%in%list.files(out)) load(paste(out,.Platform$file.sep,"wok2bel.RData",sep=""))
-	if(is.null(subset)) {subset<-rep(T,nrow(wok2bel$bel))} else {subset<-wok2bel$bel$ut%in%subset}
-	if(trim_pendants&man_recode) wok2bel$bel<-wok2bel$bel[wok2bel$zpend&wok2bel$undup&subset,c("ut","zcr")]
-	if(!trim_pendants&man_recode) wok2bel$bel<-wok2bel$bel[wok2bel$undup&subset,c("ut","zcr")]
-	if(trim_pendants&!man_recode) wok2bel$bel<-wok2bel$bel[wok2bel$pend&subset,c("ut","cr")]
-	if(!dim(wok2bel$bel)[1]) return(NA)
-	if(max(table(wok2bel$bel[,2]))==1) stop("All isolates")
+	if(is.null(db2bel)&"db2bel.RData"%in%list.files(out)) load(paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
+	if(is.null(subset)) {subset<-rep(T,nrow(db2bel$bel))} else {subset<-db2bel$bel$ut%in%subset}
+	if(trim_pendants&man_recode) db2bel$bel<-db2bel$bel[db2bel$zpend&db2bel$undup&subset,c("ut","zcr")]
+	if(!trim_pendants&man_recode) db2bel$bel<-db2bel$bel[db2bel$undup&subset,c("ut","zcr")]
+	if(trim_pendants&!man_recode) db2bel$bel<-db2bel$bel[db2bel$pend&subset,c("ut","cr")]
+	if(!dim(db2bel$bel)[1]) return(NA)
+	if(max(table(db2bel$bel[,2]))==1) stop("All isolates")
 	if("crel"%in%type){
 		cat("\nsplitting crel...")
-		if(trim_pendants&man_recode) bel2mel$tpzcrel<-split(wok2bel$bel$zcr,wok2bel$bel$ut)
-		if(trim_pendants&!man_recode) bel2mel$tpcrel<-split(wok2bel$bel$cr,wok2bel$bel$ut)
-		if(!trim_pendants&man_recode) bel2mel$zcrel<-split(wok2bel$bel$zcr,wok2bel$bel$ut)
-		if(!trim_pendants&!man_recode) bel2mel$crel<-split(wok2bel$bel$cr,wok2bel$bel$ut)
+		if(trim_pendants&man_recode) bel2mel$tpzcrel<-split(db2bel$bel$zcr,db2bel$bel$ut)
+		if(trim_pendants&!man_recode) bel2mel$tpcrel<-split(db2bel$bel$cr,db2bel$bel$ut)
+		if(!trim_pendants&man_recode) bel2mel$zcrel<-split(db2bel$bel$zcr,db2bel$bel$ut)
+		if(!trim_pendants&!man_recode) bel2mel$crel<-split(db2bel$bel$cr,db2bel$bel$ut)
 		cat("split.")	
 	}
 	if("utel"%in%type){
 		cat("\nsplitting utel...")
-		if(trim_pendants&man_recode) bel2mel$tpzutel<-split(wok2bel$bel$ut,wok2bel$bel$zcr)
-		if(trim_pendants&!man_recode) bel2mel$tputel<-split(wok2bel$bel$ut,wok2bel$bel$cr)
-		if(!trim_pendants&man_recode) bel2mel$zutel<-split(wok2bel$bel$ut,wok2bel$bel$zcr)
-		if(!trim_pendants&!man_recode) bel2mel$utel<-split(wok2bel$bel$ut,wok2bel$bel$cr)
+		if(trim_pendants&man_recode) bel2mel$tpzutel<-split(db2bel$bel$ut,db2bel$bel$zcr)
+		if(trim_pendants&!man_recode) bel2mel$tputel<-split(db2bel$bel$ut,db2bel$bel$cr)
+		if(!trim_pendants&man_recode) bel2mel$zutel<-split(db2bel$bel$ut,db2bel$bel$zcr)
+		if(!trim_pendants&!man_recode) bel2mel$utel<-split(db2bel$bel$ut,db2bel$bel$cr)
 		cat("split.")		
 	}
 	m<-names(bel2mel)
@@ -408,7 +959,7 @@ bel2mel.f<-function(
 	}
 if(F) if(trim_pendants) for(i in m[!is.na(bel2mel[m])]){
 	tab<-table(unlist(bel2mel[[i]][,1:2]))
-	cat("\nPendant ties dropped from subset of wok2bel:",sum(tab==1))
+	cat("\nPendant ties dropped from subset of db2bel:",sum(tab==1))
 	tab<-names(tab[tab==1])
 	bel2mel[[i]]<-bel2mel[[i]][!(bel2mel[[i]][,1]%in%tab|bel2mel[[i]][,2]%in%tab),]
 	if(!dim(bel2mel[[i]])[1]) bel2mel[[i]]<-NA
@@ -566,7 +1117,7 @@ as.edgelist<-function(
 }
 
 plot.mode.projection<-function(
-	wok2bel
+	db2bel
 	,m1.stub="^m1"
 	,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/descriptive/" #may add a stub at the end of this line
 	,vcx=1
@@ -895,7 +1446,7 @@ plotpois<-function(
 }
 
 subnet<-function(
-	wok2bel=stop("Supply original wok2bel object",call.=F)
+	db2bel=stop("Supply original db2bel object",call.=F)
 	,set=stop("set list(cr=incl cr,ut=incl ut,ncr=excl cr,nut=excl ut) and unused to NULL",call.=F)
 	,source=stop("Supply source",call.=F)
 )
@@ -903,22 +1454,22 @@ subnet<-function(
 	require(network)
 	source(source)
 	#if(!all(c("bel2mel.f","mel2net.f")%in%ls())) stop("Load correct source")
-	#w<-!!sapply(lapply(wok2bel$bel,"%in%",set),any)
+	#w<-!!sapply(lapply(db2bel$bel,"%in%",set),any)
 	#if(!sum(w)) stop("Not a subset of either mode of this edgelist")
-	#s<-set%in%wok2bel$bel[,w]
+	#s<-set%in%db2bel$bel[,w]
 	#if(!all(s)) {
 	#	warning(paste(sum(!s),"or",round(sum(!s)/length(s)*100,1),"% of edges from subset are not in bel. First 10 excluded:"))
 	#	print(head(set[s],10))
 	#}
-	sub<-rep(T,dim(wok2bel$bel)[1])
-	if(length(set$cr)) sub<-sub&wok2bel$bel$cr%in%set$cr
-	if(length(set$ut)) sub<-sub&wok2bel$bel$ut%in%set$ut
-	if(length(set$ncr)) sub<-sub&!wok2bel$bel$cr%in%set$ncr
-	if(length(set$nut)) sub<-sub&!wok2bel$bel$ut%in%set$nut
-	wok2bel$bel<-wok2bel$bel[sub,]
-	if("pend"%in%names(wok2bel)) wok2bel$pend<-wok2bel$pend[sub]
-	cat("\n",nrow(wok2bel$bel)," edges, ",length(unique(wok2bel$bel$ut))," uts, and ",length(unique(wok2bel$bel$cr)) ," crs fed to bel2mel.\n",sep="")
-	bel2mel<-bel2mel.f(wok2bel,out=getwd())
+	sub<-rep(T,dim(db2bel$bel)[1])
+	if(length(set$cr)) sub<-sub&db2bel$bel$cr%in%set$cr
+	if(length(set$ut)) sub<-sub&db2bel$bel$ut%in%set$ut
+	if(length(set$ncr)) sub<-sub&!db2bel$bel$cr%in%set$ncr
+	if(length(set$nut)) sub<-sub&!db2bel$bel$ut%in%set$nut
+	db2bel$bel<-db2bel$bel[sub,]
+	if("pend"%in%names(db2bel)) db2bel$pend<-db2bel$pend[sub]
+	cat("\n",nrow(db2bel$bel)," edges, ",length(unique(db2bel$bel$ut))," uts, and ",length(unique(db2bel$bel$cr)) ," crs fed to bel2mel.\n",sep="")
+	bel2mel<-bel2mel.f(db2bel,out=getwd())
 	mel2net<-mel2net.f(bel2mel)
 	mel2net
 }
@@ -951,7 +1502,7 @@ for(i in fields){
 rm(wok2db)
 
 if(is.null(variations)) {
-	cat("\nvariations=list(field1=wok2bel_sets1,field2=wok2bel_sets2,...)")
+	cat("\nvariations=list(field1=db2bel_sets1,field2=db2bel_sets2,...)")
 }
 else
 {
@@ -1290,4 +1841,3 @@ for(i in n){
 	save(mel2lc,file="mel2lc_rt-f_uw.RData")
 }
 }
-

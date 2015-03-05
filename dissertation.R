@@ -9,7 +9,7 @@ save(wok2db_41,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941o
 }
 
 if(F){
-wok2bel_41<-wok2bel.f(wok2db=wok2db_41
+db2bel_41<-db2bel.f(wok2db=wok2db_41
 	,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out"
 	,man_recode=F
 	,saved_recode=NULL
@@ -18,23 +18,23 @@ wok2bel_41<-wok2bel.f(wok2db=wok2db_41
 
 #bel by year
 if(F){
-	wok2bel_41_by<-list()
+	db2bel_41_by<-list()
 	years<-sort(as.character(unique(wok2db_41$b[wok2db_41$fields=="PY"])))
 	for(i in years){
 		set<-NULL
 		set<-as.character(wok2db_41$b.ind[wok2db_41$fields=="PY"&wok2db_41$b==i])
-	wok2bel_41_by[[i]]<-wok2bel.f(wok2db=droplevels(wok2db_41[wok2db_41$b.ind.%in%set,])
+	db2bel_41_by[[i]]<-db2bel.f(wok2db=droplevels(wok2db_41[wok2db_41$b.ind.%in%set,])
 		,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year"
 		,man_recode=F
 		,saved_recode=NULL
 		,cut_samp_def=0
 	)
 }
-save(wok2bel_41_by,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year/wok2bel_41_by.RData")
+save(db2bel_41_by,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year/db2bel_41_by.RData")
 }
 
 if(F){
-bel2mel<-bel2mel.f(wok2bel=wok2bel_41
+bel2mel<-bel2mel.f(db2bel=db2bel_41
 	,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out"
 	)
 }
@@ -42,7 +42,7 @@ bel2mel<-bel2mel.f(wok2bel=wok2bel_41
 #mel by year
 if(F){
 	bel2mel_41_by<-list()
-	for(i in years) {bel2mel_41_by[[i]]<-bel2mel.f(wok2bel=wok2bel_41_by[[i]]
+	for(i in years) {bel2mel_41_by[[i]]<-bel2mel.f(db2bel=db2bel_41_by[[i]]
 		,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year"
 		)
 	}
@@ -284,17 +284,17 @@ hkl<-list(memb=cf[!!sapply(cf,length)],nest=nh,thresh=tt)
 
 #### Discover components in bel, isolates in mel (dropped by bel2mel)
 levs<-readLines("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/tpcrel_1941_CFinder_levels.txt")
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
-utcrp<-aggregate(!wok2bel$pend,by=wok2bel$bel["ut"],mean) #proportion of cr for each ut that are pendant
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
+utcrp<-aggregate(!db2bel$pend,by=db2bel$bel["ut"],mean) #proportion of cr for each ut that are pendant
 utcrp<-data.frame(utcrp[1],round(utcrp[2],3))
-utcrr<-aggregate(wok2bel$bel$cr[wok2bel$pend],by=list(wok2bel$bel[wok2bel$pend,"ut"]),length) #number of cr remaining after pendants dropped
+utcrr<-aggregate(db2bel$bel$cr[db2bel$pend],by=list(db2bel$bel[db2bel$pend,"ut"]),length) #number of cr remaining after pendants dropped
 colnames(utcrr)<-c("ut","crr")
 colnames(utcrp)<-c("ut","crp")
 
-iso<-merge(wok2bel$bel[wok2bel$pend,],utcrr,all.y=T)
+iso<-merge(db2bel$bel[db2bel$pend,],utcrr,all.y=T)
 iso<-aggregate(iso$crr,iso["cr"],FUN=function(x) all(x==1))
 iso<-iso[iso$x,"cr"] #the CR's lost because isolate in unimodal projection; would be components all UT attached to one CR in bimodal
-isow<-table(wok2bel$bel$cr[wok2bel$bel$cr%in%iso])
+isow<-table(db2bel$bel$cr[db2bel$bel$cr%in%iso])
 isot<-table(isow)
 hkl$iso<-isow
 
@@ -336,7 +336,7 @@ save(hkl,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hkl
 if(F){
 #inspect subsets here
 source("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hkl.RData")
 library(statnet)
 
@@ -350,7 +350,7 @@ text(utgr[utgr$ut<=tut,],labels=rownames(utgr[utgr$ut<=tut,]),cex=.5)
 utgr<-utgr[order(utgr$ut,utgr$k,decreasing=T),]
 
 t1<-proc.time()
-net<-lapply(rownames(utgr),FUN=function(x) {cat(x,"\n",sep="\n");subnet(wok2bel=wok2bel,set=list(cr=hkl$mlev[hkl$memb[[x]]],ut=NULL,nut=NULL,ncr=NULL),source="/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")})
+net<-lapply(rownames(utgr),FUN=function(x) {cat(x,"\n",sep="\n");subnet(db2bel=db2bel,set=list(cr=hkl$mlev[hkl$memb[[x]]],ut=NULL,nut=NULL,ncr=NULL),source="/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")})
 print(proc.time()-t1)
 names(net)<-rownames(utgr)
 net[!sapply(net,length)]<-
@@ -424,11 +424,11 @@ save(hkl,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hkl
 ####################### Exprot duration database to Stata?
 #rm(list=ls())
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hkl.RData")
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
-tcr<-length(unique(wok2bel$bel$cr))
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
+tcr<-length(unique(db2bel$bel$cr))
 cat(round(length(hkl$mlev)/tcr*100,2),"% of references contribute to community structure.",sep="")
 dis<-c(
-	sum(!wok2bel$pend)
+	sum(!db2bel$pend)
 	,sum(hkl$iso<hkl$thresh)
 	,length(unique(unlist(hkl$memb[grep("^k",names(hkl$memb))])))
 	,length(unique(unlist(hkl$memb[grep("^i",names(hkl$memb))])))
@@ -438,11 +438,11 @@ dis<-cbind(dis,"%"=round(dis/sum(dis)*100,1))
 write.table(dis,sep="\t",file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/descriptive/cr_selection.tab")
 print(dis)
 
-cr<-unique(wok2bel$bel$cr[wok2bel$pend])
-wok2bel<-wok2bel$bel[wok2bel$pend,]
-cr<-split(wok2bel$cr,f=wok2bel$ut)
-(nunstr<-length(unique(wok2bel$cr))-length(hkl$mlev)) #
-rm(wok2bel)
+cr<-unique(db2bel$bel$cr[db2bel$pend])
+db2bel<-db2bel$bel[db2bel$pend,]
+cr<-split(db2bel$cr,f=db2bel$ut)
+(nunstr<-length(unique(db2bel$cr))-length(hkl$mlev)) #
+rm(db2bel)
 for(i in 1:length(cr)) cr[[i]]<-which(hkl$mlev%in%cr[[i]]) #convert CRs to CFinder codes
 
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
@@ -629,14 +629,14 @@ write.table(d
 ##### Illustrate network projections that are small versions of my distribution
 if(F){
 rm(list=ls())
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
 source("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/edge_sample.RData")
 library(statnet)
 
 narts<-list()
 for(i in 1:10){
-	es<-list(bel=wok2bel$bel[wok2bel$pend,][sample(1:sum(wok2bel$pend),2000),])
+	es<-list(bel=db2bel$bel[db2bel$pend,][sample(1:sum(db2bel$pend),2000),])
 	es$bel<-es$bel[order(es$bel$ut,es$bel$cr),]
 	tcr<-table(es$bel$cr)
 	es$pend<-es$bel$cr%in%names(tcr)[tcr>1]
@@ -717,7 +717,7 @@ dev.off()
 #####Some summary stats for Scrivener
 if(F){
 rm(list=ls())
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
 
 wok2db_41<-wok2db_41[wok2db_41$fields%in%c("PY","PU","SO","DT","PG","AU","AF"),]
@@ -737,9 +737,9 @@ v<-droplevels(wok2db_41[wok2db_41$fields=="PU",c("ut","b")])
 colnames(v)[2]<-"pu"
 w<-droplevels(wok2db_41[wok2db_41$fields=="SO",c("ut","b")])
 colnames(w)[2]<-"so"
-x<-droplevels(aggregate(wok2bel$bel$cr,wok2bel$bel["ut"],length))
+x<-droplevels(aggregate(db2bel$bel$cr,db2bel$bel["ut"],length))
 colnames(x)<-c("ut","nr")
-y<-droplevels(aggregate(wok2bel$bel$cr[wok2bel$pend],list(wok2bel$bel[wok2bel$pend,"ut"]),length))
+y<-droplevels(aggregate(db2bel$bel$cr[db2bel$pend],list(db2bel$bel[db2bel$pend,"ut"]),length))
 colnames(y)<-c("ut","tpnr")
 
 cbind(table(v$pu))
@@ -802,7 +802,7 @@ if(F) write.table(soup[,-1]
 	,row.names=F
 )
 
-z<-merge(wok2bel$bel,v,all.x=T)
+z<-merge(db2bel$bel,v,all.x=T)
 z<-merge(z,w)
 z<-merge(z,t)
 tz<-1/table(z$cr)
@@ -817,7 +817,7 @@ if(F) write.table(z[,3:6]
 	,row.names=F
 )
 
-tpz<-merge(wok2bel$bel[wok2bel$pend,],v,all.x=T)
+tpz<-merge(db2bel$bel[db2bel$pend,],v,all.x=T)
 tpz<-merge(tpz,w)
 tpz<-merge(tpz,t)
 ttpz<-1/table(tpz$cr)
@@ -894,21 +894,21 @@ z1<-merge(z,data.frame(cr=names(z1),w=as.numeric(z1)))[,2:3]
 z1<-aggregate(z1$w,z1["pu"],sum)
 colnames(z1)[2]<-"cr"
 
-zz<-droplevels(merge(wok2bel$bel,w,all.x=T)[,c("cr","so")])
+zz<-droplevels(merge(db2bel$bel,w,all.x=T)[,c("cr","so")])
 zz<-zz[!duplicated(z),]
 zz1<-1/table(zz$cr)
 zz1<-merge(zz,data.frame(cr=names(zz1),w=as.numeric(zz1)))[,2:3]
 zz1<-aggregate(zz1$w,zz1["so"],sum)
 colnames(zz1)[2]<-"cr"
 
-tpz<-droplevels(merge(wok2bel$bel[wok2bel$pend,],v,all.x=T)[,c("cr","pu")])
+tpz<-droplevels(merge(db2bel$bel[db2bel$pend,],v,all.x=T)[,c("cr","pu")])
 tpz<-tpz[!duplicated(tpz),]
 tpz1<-1/table(tpz$cr)
 tpz1<-merge(tpz,data.frame(cr=names(tpz1),w=as.numeric(tpz1)))[,2:3]
 tpz1<-aggregate(tpz1$w,tpz1["pu"],sum)
 colnames(tpz1)[2]<-"tpcr"
 
-tpzz<-droplevels(merge(wok2bel$bel[wok2bel$pend,],w,all.x=T)[,c("cr","so")])
+tpzz<-droplevels(merge(db2bel$bel[db2bel$pend,],w,all.x=T)[,c("cr","so")])
 tpzz<-tpzz[!duplicated(tpz),]
 tpzz1<-1/table(tpzz$cr)
 tpzz1<-merge(tpzz,data.frame(cr=names(tpzz1),w=as.numeric(tpzz1)))[,2:3]
@@ -940,7 +940,7 @@ write.table(soup2[[i]]
 }
 
 #weights for journals under multiple publishers
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
 zzz<-droplevels(wok2db_41[wok2db_41$fields=="CR",c("ut","b")])
 colnames(zzz)[2]<-"cr"
 
@@ -981,16 +981,16 @@ wok2db_41$fields[wok2db_41$fields=="AF"]<-"CR"
 
 ##happens to make a co-authorship network!
 require(parallel)
-afbel<-wok2bel.f(wok2db=wok2db_41,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/AFout",man_recode=T,recode_cores=detectCores(),manual_audit=T)
+afbel<-db2bel.f(wok2db=wok2db_41,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/AFout",man_recode=T,recode_cores=detectCores(),manual_audit=T)
 # 3799 Anonymouses cut
 #hrm, fuzzy matching fixed! and fast! parallelelelel
 #coool, coauthorship network
 }
 
 # now we could add authors as a column in the population statistics
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/AFout/wok2bel_AF_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/AFout/db2bel_AF_41.RData")
 #follow same procedure as CR
-az<-merge(wok2bel$bel[,-2],v,all.x=T)
+az<-merge(db2bel$bel[,-2],v,all.x=T)
 az<-merge(az,w)
 az<-merge(az,t)
 atz<-1/table(az$zcr)
@@ -1005,7 +1005,7 @@ write.table(az[,3:6]
 	,row.names=F
 )
 
-tpaz<-merge(wok2bel$bel[wok2bel$pend,-2],v,all.x=T)
+tpaz<-merge(db2bel$bel[db2bel$pend,-2],v,all.x=T)
 tpaz<-merge(tpaz,w)
 tpaz<-merge(tpaz,t)
 ttpaz<-1/table(tpaz$zcr)
@@ -1111,7 +1111,7 @@ plot(density(act))
 (athresh<-round(quantile(act,.025),2))
 # 97.5% rounded to 2 is 0.64
 
-load("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/1900-1917/wok2bel_sets.RData")
+load("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/1900-1917/db2bel_sets.RData")
 sts<-lapply(sets,FUN=function(x) as.dist(stringdistmatrix(x,x,method="jw",p=.1)))
 sts<-unlist(sts)
 cd<-list(rp=density(blmat),ra=density(act),ma=density(sts))
@@ -1374,7 +1374,7 @@ sum((^2))
 ### at 1000 replications, difference is 7.104764 sds above the random deviations from the original distribution
 
 ##### degree distribution of each mode
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/mel2net_41.RData")
 library(network)
@@ -1382,17 +1382,17 @@ library(network)
 ##### new mel that includes isolates
 if(F){
 	source("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")
-	bel2mel<-bel2mel.f(wok2bel=wok2bel,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out")
+	bel2mel<-bel2mel.f(db2bel=db2bel,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out")
 	mel2net<-mel2net.f(bel2mel)
 }
 
 uth<-5 #set upper threshold for summary table
 ddt<-list()
-ddt$bmut<-c("0"=sum(wok2db_41$b[wok2db_41$fields=="NR"]=="0"),table(table(wok2bel$bel$ut)))
-ddt$tput<-table(table(wok2bel$bel$ut[wok2bel$pend]))
+ddt$bmut<-c("0"=sum(wok2db_41$b[wok2db_41$fields=="NR"]=="0"),table(table(db2bel$bel$ut)))
+ddt$tput<-table(table(db2bel$bel$ut[db2bel$pend]))
 ddt$ut<-table(degree(mel2net$tput,gmode="graph"))
-ddt$bmcr<-table(table(wok2bel$bel$cr))
-ddt$tpcr<-table(table(wok2bel$bel$cr[wok2bel$pend]))
+ddt$bmcr<-table(table(db2bel$bel$cr))
+ddt$tpcr<-table(table(db2bel$bel$cr[db2bel$pend]))
 ddt$cr<-table(degree(mel2net$tpcr,gmode="graph"))
 br<-paste(">=",uth+1,sep="")
 dd<-matrix(nrow=uth+2,ncol=6,dimnames=list(degree=c(0:uth,br),mode=c("bmut","tput","ut","bmcr","tpcr","cr")))
@@ -1411,7 +1411,7 @@ write.table(dd
 	,na="."
 	,row.names=T
 )
-rm(wok2bel,mel2net,wok2db_41)
+rm(db2bel,mel2net,wok2db_41)
 
 ##### which clusters are interesting
 ksig<-readLines("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/stata/ksig.tab")
@@ -1434,39 +1434,39 @@ dev.off()
 #####effects of network selection
 rm(list=ls())
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hkl.RData")
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2bel_41.RData")
+load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData")
 sel<-list(ut0=NULL,ut1=NULL,ut2=NULL,ut3=NULL,ut4=NULL,cr0=NULL,cr1=NULL,cr2=NULL,cr3=NULL,cr4=NULL) 
 
 #criterion 0: original coding, out because journal not selected, and because coverage of journal is spotty
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
 sel$ut0<-levels(droplevels(wok2db_41$b.ind.))
 rm(wok2db_41)
-sel$cr0<-unique(wok2bel$bel$cr)
+sel$cr0<-unique(db2bel$bel$cr)
 
 ##levs are all of the CRs that were fed into CFinder as exported from the single mode CR node UT edge network
 #so why isn't lev the length of the unique CRs in bel2mel? Because isolates were dropped. Where does an isolate come from? A ut with only one reference left after pendants are dropped.
 
 #criterion 1: out because of projections as bimodal UT to CR list, ut's with zero references excluded
-sel$ut1<-unique(wok2bel$bel$ut)
-sel$cr1<-unique(wok2bel$bel$cr)
+sel$ut1<-unique(db2bel$bel$ut)
+sel$cr1<-unique(db2bel$bel$cr)
 
 #criterion 2: out because of cr size threshold
 
 sel$cr2<-hkl$mlev[unique(unlist(hkl$memb))]
-sel$ut2<-unique(wok2bel$bel$ut[wok2bel$bel$cr%in%sel$cr2])
+sel$ut2<-unique(db2bel$bel$ut[db2bel$bel$cr%in%sel$cr2])
 
 #criterion 3: out because of unimodal projection: cr only exists in UT where it is the only reference
 sel$cr3<-readLines("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/tpcrel_1941_CFinder_levels.txt")
-sel$ut3<-unique(wok2bel$bel$ut[wok2bel$bel$cr%in%sel$cr3])
+sel$ut3<-unique(db2bel$bel$ut[db2bel$bel$cr%in%sel$cr3])
 
 #criterion 4: reintroduce isolates
 sel$cr4<-hkl$mlev
-sel$ut4<-unique(wok2bel$bel$ut[wok2bel$bel$cr%in%sel$cr4])
+sel$ut4<-unique(db2bel$bel$ut[db2bel$bel$cr%in%sel$cr4])
 
 
 #criterion 5: out because cr not cohesive, member of 3-clique
 sel$cr5<-hkl$mlev[unique(hkl$db$cr)]
-sel$ut5<-unique(wok2bel$bel$ut[wok2bel$bel$cr%in%sel$cr5]) # dbout has every ut from criterion 1 and 2
+sel$ut5<-unique(db2bel$bel$ut[db2bel$bel$cr%in%sel$cr5]) # dbout has every ut from criterion 1 and 2
 #note that nothing is eliminated
 
 if(T){
