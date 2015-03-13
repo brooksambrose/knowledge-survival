@@ -22,8 +22,8 @@ if(F){
 	years<-sort(as.character(unique(wok2db_41$b[wok2db_41$fields=="PY"])))
 	for(i in years){
 		set<-NULL
-		set<-as.character(wok2db_41$b.ind[wok2db_41$fields=="PY"&wok2db_41$b==i])
-	db2bel_41_by[[i]]<-db2bel.f(wok2db=droplevels(wok2db_41[wok2db_41$b.ind.%in%set,])
+		set<-as.character(wok2db_41$id[wok2db_41$fields=="PY"&wok2db_41$b==i])
+	db2bel_41_by[[i]]<-db2bel.f(wok2db=droplevels(wok2db_41[wok2db_41$id.%in%set,])
 		,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year"
 		,man_recode=F
 		,saved_recode=NULL
@@ -1439,7 +1439,7 @@ sel<-list(ut0=NULL,ut1=NULL,ut2=NULL,ut3=NULL,ut4=NULL,cr0=NULL,cr1=NULL,cr2=NUL
 
 #criterion 0: original coding, out because journal not selected, and because coverage of journal is spotty
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
-sel$ut0<-levels(droplevels(wok2db_41$b.ind.))
+sel$ut0<-levels(droplevels(wok2db_41$id.))
 rm(wok2db_41)
 sel$cr0<-unique(db2bel$bel$cr)
 
@@ -1670,9 +1670,9 @@ if(F){
 
 rm(list=ls())
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
-cr<-droplevels(wok2db_41[wok2db_41$fields=="CR",c("b.ind.","b")])
-py<-droplevels(wok2db_41[wok2db_41$fields=="PY",c("b.ind.","b")])
-crpy<-merge(cr,py,by="b.ind.")
+cr<-droplevels(wok2db_41[wok2db_41$fields=="CR",c("id.","b")])
+py<-droplevels(wok2db_41[wok2db_41$fields=="PY",c("id.","b")])
+crpy<-merge(cr,py,by="id.")
 names(crpy)<-c("ut","cr","py")
 crpyby<-split(crpy$cr,crpy$py,drop=T)
 crpyby<-lapply(crpyby,droplevels)
@@ -1689,9 +1689,9 @@ save(g41,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/g41
 
 rm(list=ls())
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1980out/wok2db_80.RData")
-cr<-droplevels(wok2db_80[wok2db_80$fields=="CR",c("b.ind.","b")])
-py<-droplevels(wok2db_80[wok2db_80$fields=="PY",c("b.ind.","b")])
-crpy<-merge(cr,py,by="b.ind.")
+cr<-droplevels(wok2db_80[wok2db_80$fields=="CR",c("id.","b")])
+py<-droplevels(wok2db_80[wok2db_80$fields=="PY",c("id.","b")])
+crpy<-merge(cr,py,by="id.")
 names(crpy)<-c("ut","cr","py")
 crpyby<-split(crpy$cr,crpy$py,drop=T)
 crpyby<-lapply(crpyby,droplevels)
@@ -1717,9 +1717,9 @@ load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/2015out/wok2db_15_7.
 
 wok2db_15<-rbind(wok2db_15_1,wok2db_15_2,wok2db_15_3,wok2db_15_4,wok2db_15_5,wok2db_15_6,wok2db_15_7)
 rm(list=ls()[grep("wok2db_15_",ls())])
-cr<-droplevels(wok2db_15[wok2db_15$fields=="CR",c("b.ind.","b")])
-py<-droplevels(wok2db_15[wok2db_15$fields=="PY",c("b.ind.","b")])
-crpy<-merge(cr,py,by="b.ind.")
+cr<-droplevels(wok2db_15[wok2db_15$fields=="CR",c("id.","b")])
+py<-droplevels(wok2db_15[wok2db_15$fields=="PY",c("id.","b")])
+crpy<-merge(cr,py,by="id.")
 names(crpy)<-c("ut","cr","py")
 crpyby<-split(crpy$cr,crpy$py,drop=T)
 crpyby<-lapply(crpyby,droplevels)

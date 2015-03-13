@@ -1,4 +1,3 @@
-
 wok2db.f<-function(
 	dir=stop("Choose input directory containing WOK batches.")
 	,out=stop("Specify output directory for your project.")
@@ -49,90 +48,117 @@ wok2db.f<-function(
 	wok2db<-rbindlist(wok2db)
 	if(anyDuplicated(wok2db)>0) wok2db<-unique(wok2db)
 	wok2db<-droplevels(wok2db)
+	setnames(wok2db,c("b.ind","b"),c("id","val"))
 	save(wok2db,file=paste(out,.Platform$file.sep,"wok2db.RData",sep=""))
 	wok2db
 }
 
-CR2zCR.f<-function(
+if(F){
+db2zCR.f<-function( #utility for solving identity uncertainty for WOK CR field
+	rawbel=wok2db["CR",c(1,3),with=F] #unprocessed bimodal edgelist in UT CR order
+	,just.normalize=T # TRUE will remove DOI and capitalize. FALSE will perform fuzzy set replacement.
 )
 {
-library(stringdist)
+#require(dendextend)
+#require(stringdist)
+#require(fastcluster)
 rm(list=ls())
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/grp.RData")
-t0<-proc.time()
-grp<-lapply(grp,unlist)
-l<-sapply(grp,length)
-max<-max(l)
-(tab<-table(l))
-grp[l<2|l>1000]<-NULL
-grp<-lapply(grp,FUN=function(x) {x<-na.omit(x);attributes(x)<-NULL;x})
-d<-lapply(
-	grp,FUN=function(x)
-{
-	if(length(x)<=100) {ret<-as.dist(stringdistmatrix(x,x,method="jw",p=.1,useNames=T))} else {ret<-as.dist(stringdistmatrix(x,x,method="jw",p=.1,useNames=T,ncores=4))}
-	ret
-}
-)
-q<-quantile(unlist(d),p=seq(0,1,.05))
-t1<-proc.time()
-t1-t0
-cbind(q)
-dmax<-sapply(d,max)
-d[dmax>.1]<-NULL
-rm(list=ls()[ls()!="d"])
-dl<-sqrt(sapply(d,length)*2)
-library(fastcluster)
-system.time(hd<-lapply(d,function(x) as.dendrogram(hclust(x))))
-nlhd<-sort(sapply(hd,nleaves),decreasing=T)
-hd<-hd[order(nlhd,decreasing=T)]
-
-save(hd,file="hd.RData")
-
-#troubling realizations about the sets, they overlap!!
-
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
-for(i in 1:length(hd)) {attributes(hd[[i]])$osamp<-list(i);attributes(hd[[i]])$og<-T}
-
 require(data.table)
-require(dendextend)
 require(stringdist)
-require(fastcluster)
+
+
+load("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/wok2db.RData")
+if(!is.data.table(wok2db)) wok2db<-data.table(wok2db)
+setkey(wok2db,fields,id)
+
+### impose formatting and nomenclature ###
+rawbel<-wok2db["CR",c(1,3),with=F] #delete
+#save.rawbel<-copy(rawbel)
+setnames(rawbel,1:2,c("ut","cr"))
+rawbel[,`:=`(
+	cr=as.character(cr)
+	,ut=as.character(ut)
+)]
+(rawbel[,cr:=sub(", DOI .+","",cr)]) #remove DOI
+(rawbel[,cr:=gsub("(\\w)","\\U\\1",rawbel$cr,perl=T)]) #capitalize
+(rawbel[,cr:=sub("\\[ANONYMOUS\\], ","",cr)]) #remove anonymous
+setkey(rawbel,ut,cr) #sort
+
+#if(!just.normalize){ #fuzzy set replacement
+
+
+	### build database to define features of pairwise string comparison model ###
+
+	## first define new database of citations, including original degree info
+	setkey(rawbel,cr)
+	cr<-rawbel[,.N,by=cr]
+
+	## greedy comparitor and pick threshhold
 	
-print(length(hd))
-t0<-proc.time()
-hdt<-unlist(lapply(hd,labels))
-hdt<-sort(unique(hdt[duplicated(hdt)]))
-print(length(hdt))
-while(!!length(hdt)){
-hd<-hd[sapply(hd,length)!=0]
-hda<-data.table(i=unlist(mapply(rep,1:length(hd),sapply(hd,function(x) attributes(x)$members))),cr=unlist(lapply(hd,labels)),key="cr")
-hda<-hda[hdt,list(olap=list(i)),by="cr"]
-for(i in 1:nrow(hda)){
-	x<-unique(unlist(lapply(hd[hda$olap[[i]]],labels)))
-	if(!length(unlist(x))) next
-	osamp<-min(hda$olap[[i]])
-	hd[[osamp]]<-as.dendrogram(hclust(as.dist(stringdistmatrix(x,x,method="jw",p=.1,useNames=T))))
-	attributes(hd[[osamp]])$osamp<-unique(c(hda$olap[[i]],attributes(hd[[osamp]])$osamp))
-	attributes(hd[[osamp]])$og<-F
-	for(j in unique(setdiff(hda$olap[[i]],osamp))) hd[[j]]<-list()
-	cat("\r",round(i/nrow(hda),3),"\t\t",sep="")
+	#### ok  match concept is good, but using amatch throws away information that we'll need later
+	
+	bmnl.f<-function(jcr,jw.thresh=.1,jw.penalty=.1){ # records best match nodelist (bmnl); nodelist of best match(es) only
+		jcr<-as.character(jcr)
+		require(stringdist)
+		require(data.table)
+		x<-list()
+		cat("\n")
+		l<-length(jcr)
+		for(i in 1:l){
+			cat("\r",round(i/l,3),"\t")
+			x[[length(x)+1]]<-stringdist(jcr[i],jcr[-i],method="jw",p=jw.penalty) # compute jw distance
+			if(!any(x[[length(x)]]<=jw.thresh)){x[[length(x)]]<-NULL;next} # if none pass threshold, clear and move on to the next
+			w<-which(x[[length(x)]]==min(x[[length(x)]]))
+			x[[length(x)]]<-data.table("Target"=jcr[-i][w],"jw"=x[[length(x)]][w]) # data table of node and distance as edge weight
+			rm(w)
+			names(x)[length(x)]<-jcr[i]
+		}
+		x
+	}
+	
+	library(microbenchmark)
+	(mb<-microbenchmark(bmnl_1<-bmnl.f(cr$cr),bmnl_2<-bmnl.f(cr$cr,jw.thresh=.2),times=1))
+	
+	bm.el1<-data.table("Source"=factor(rep(names(bmnl_1),sapply(bmnl_1,function(x) dim(x)[1]))),rbindlist(bmnl_1))
+	setnames(bm.el1,2:3,c("Target","jw"))
+	setkey(bm.el1,Source,Target)
+	(bm.el1[,cjw:=1-jw])
+
+	bm.el2<-data.table("Source"=factor(rep(names(bmnl_2),sapply(bmnl_2,function(x) dim(x)[1]))),rbindlist(bmnl_2))
+	setnames(bm.el2,2:3,c("Target","jw"))
+	setkey(bm.el2,Source,Target)
+	(bm.el2[,cjw:=1-jw])
+	
+	setwd("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/")
+	write.table(bm.el1,file="out/bm.el1.tab",quote=F,sep="\t",row.names=F,col.names=T)
+	write.table(bm.el2,file="out/bm.el2.tab",quote=F,sep="\t",row.names=F,col.names=T)
+	
+	
+	library(igraph)
+	ig<-graph.adjacency(b.net[,])
+	cig<-optimal.community(ig)
+	pdf("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/ml_igraph_opt.pdf")
+	plot(cig,ig)
+	dev.off()
+	
+
+
+	## then extract basic data on each citation
+	rawbel[,`:=`(
+		y=as.integer(sub("(^|(.*, ))((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9]))($|, .*)","\\3",cr)) # year number, or na
+		,v=as.integer(sub(".*, V([0-9]+).*","\\1",cr)) # volume number, or na
+		,p=as.integer(sub(".*, V([0-9]+).*","\\1",cr)) # page number, or na
+		,s=as.numeric(strptime(
+	paste(sub("(^|(.*, ))((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9]))($|, .*)","\\3",cr),sub(".*(((0[1-9])|(1[0-2]))((0[1-9])|([1-2][0-9])|(3[0-1]))).*","\\1",cr),sep="")
+	,"%Y%m%d"))/60/60/24 # periodical date in days
+		,l=nchar(cr) # length of string
+		,ca=grepl("^\\*",cr)
+		,b09=grepl("^((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9]))",cr)
+	)] 
 }
-hdt<-unlist(lapply(hd,labels))
-hdt<-sort(unique(hdt[duplicated(hdt)]))
-print(length(hdt))
-}
-hd<-hd[sapply(hd,length)!=0]
-print(length(hd))
-t1<-proc.time()
-round((t1-t0)/60,2)
 
-save(hd,file="hd.RData")
-
-############
-
-load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hd.RData")
-require(dendextend)
-require(data.table)
+return(rawbel)
+#}
 t2<-proc.time()
 trg<-data.table(dl=sapply(hd,function(x) any(grepl(" ?((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9])),",labels(x))))) # has date (all true)
 trg[,vl:=sapply(hd,function(x) any(grepl(", V[0-9]",labels(x))))] #has volume
@@ -303,13 +329,7 @@ lapply(trg[,list(dsd,vsd,psd,ssd,hsd)], hist)
 #surefire?
 lapply(hd[sample(which(trg$dsd==0&trg$vsd==0&trg$psd==0&trg$ncsd==0&trg$l>2),10)],function(x) cat(c(labels(x),"\n"),sep="\n"))
 c<-75
-t<-function(c) {
-	(trg$dsd<=cen$d[c]|is.infinite(trg$dsd))
-	&(trg$vsd<=cen$v[c]|is.infinite(trg$vsd))
-	&(trg$psd<=cen$p[c]|is.infinite(trg$psd))
-	&(trg$hsd<=cen$h[c])
-	&(trg$ncsd<=cen$nc[c])
-}
+t<-function(c) (trg$dsd<=cen$d[c]|is.infinite(trg$dsd))&(trg$vsd<=cen$v[c]|is.infinite(trg$vsd))&(trg$psd<=cen$p[c]|is.infinite(trg$psd))&(trg$hsd<=cen$h[c])&(trg$ncsd<=cen$nc[c])
 lapply(hd[sample(which(t(c)),10)],function(x) cat(c(labels(x),"\n"),sep="\n"))
 where2drawtheline<-data.frame(m=round(sapply(1:100,function(c) mean(t(c)))*100,1),n=sapply(1:100,function(c) sum(t(c))))
 plot(where2drawtheline$n,type="l")
@@ -603,7 +623,7 @@ pkdens.coef<-apply(coef,2,function(x) {y<-density(x);y<-y$x[which.max(y$y)];y})
 den<-apply(coef,2,density)
 }
 }
-
+}
 db2bel.f<-function(
 	wok2db
 	,out=stop("Specify output directory for your project.")
@@ -631,7 +651,7 @@ if(!any(ls_or_ld%in%c("ls","ld"))) stop("Specify Levenshtein similarity (\"ls\")
 db2bel<-list()
 wok2db<-data.table(wok2db)
 setkey(wok2db,fields)
-db2bel$bel<-data.frame(wok2db[J("CR")])[,c("b.ind","b")]
+db2bel$bel<-data.frame(wok2db[J("CR")])[,c("id","val")]
 rm("wok2db")
 
 ### impose formatting and nomenclature ###
@@ -658,7 +678,7 @@ if(cut_samp_def>0){
 	}
 }
 
-{db2bel<-list(bel=db2bel$bel);save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))}
+db2bel<-list(bel=db2bel$bel);save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
 
 if(man_recode&is.null(saved_recode)){
 	compare<-function(v) all(sapply(as.list(v[-1]),FUN=function(z){identical(z,v[1])}))
