@@ -2,19 +2,32 @@ wok2db.f<-function(
 	dir=stop("Choose input directory containing WOK batches.")
 	,out=stop("Specify output directory for your project.")
 	,art_rev_only=T
+	,sample.batches=F
+	,sample.size=1000
 )
 {
 	#NEWER WOK Database Import
 	require(data.table)
+
+	files<-list.files(dir,full.names=T,recursive=T)
+
 	wok2db<-list()
-	n<-length(list.files(dir,full.names=T,recursive=T))
 	c<-0
+	n<-length(files)
+	
+	cat("\n",n,"batches detected.",sep="")
 
-	i=list.files(dir,full.names=T,recursive=T)[1]
+	if(sample.batches) {
+		files<-sort(sample(x=files,size=sample.size))
+		cat("\n",sample.size," or ",round(sample.size/n*100,3)," % of batches drawn at random.\n\n",sep="")
+	}
 
-	for(i in list.files(dir,full.names=T,recursive=T)){
+	n<-length(files)
+	
+	for(i in files){
 		c<-c+1
-		cat("\r",round(c/n,3),i,"\t\t",sep=" ")
+		flush.console()
+		cat("\r",round(c/n,3),i,sep=" ")
 		b<-readLines(i,warn=F)
 		fields<-sub("^(.{2}).+","\\1",b)
 		cut<-fields%in%c("FN","VR","","ER","EF")
@@ -623,7 +636,7 @@ pkdens.coef<-apply(coef,2,function(x) {y<-density(x);y<-y$x[which.max(y$y)];y})
 den<-apply(coef,2,density)
 }
 }
-}
+
 db2bel.f<-function(
 	wok2db
 	,out=stop("Specify output directory for your project.")
