@@ -14,7 +14,7 @@ wok2db.f<-function(
 	wok2db<-list()
 	c<-0
 	n<-length(files)
-	
+
 	cat("\n",n,"batches detected.",sep="")
 
 	if(sample.batches) {
@@ -23,7 +23,7 @@ wok2db.f<-function(
 	}
 
 	n<-length(files)
-	
+
 	for(i in files){
 		c<-c+1
 		flush.console()
@@ -39,7 +39,7 @@ wok2db.f<-function(
 		if(any(t)) {
 			for(j in 1:length(x)) x[j]<-y[sum(y<x[j])]
 			fields[t]<-fields[x]
-		} 
+		}
 		b<-sub("^.. ?(.*)","\\1",b)
 		ind<-1:length(b)
 		t<-fields!="UT"
@@ -67,19 +67,13 @@ wok2db.f<-function(
 }
 
 if(F){
-db2zCR.f<-function( #utility for solving identity uncertainty for WOK CR field
-	rawbel=wok2db["CR",c(1,3),with=F] #unprocessed bimodal edgelist in UT CR order
+cr2zcr.f<-function( #utility for resolving identity uncertainty for WOK CR field
+	cr=stop("cr = supply a character vector of unique and uncertain CR ids") #unprocessed bimodal edgelist in UT CR order
 	,just.normalize=T # TRUE will remove DOI and capitalize. FALSE will perform fuzzy set replacement.
 )
 {
-#require(dendextend)
-#require(stringdist)
-#require(fastcluster)
-rm(list=ls())
-require(data.table)
 require(stringdist)
-
-
+require(randomForest)
 load("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/wok2db.RData")
 if(!is.data.table(wok2db)) wok2db<-data.table(wok2db)
 setkey(wok2db,fields,id)
@@ -107,10 +101,10 @@ setkey(rawbel,ut,cr) #sort
 	cr<-rawbel[,.N,by=cr]
 
 	## greedy comparitor and pick threshhold
-	
+
 	#### ok  match concept is good, but using amatch throws away information that we'll need later
-	
-	bmnl.f<-function(jcr,jw.thresh=.1,jw.penalty=.1){ # records best match nodelist (bmnl); nodelist of best match(es) only
+
+bmnl.f<-function(jcr,jw.thresh=.1,jw.penalty=.1){ # records best match nodelist (bmnl); nodelist of best match(es) only
 		jcr<-as.character(jcr)
 		require(stringdist)
 		require(data.table)
@@ -128,10 +122,10 @@ setkey(rawbel,ut,cr) #sort
 		}
 		x
 	}
-	
+
 	library(microbenchmark)
 	(mb<-microbenchmark(bmnl_1<-bmnl.f(cr$cr),bmnl_2<-bmnl.f(cr$cr,jw.thresh=.2),times=1))
-	
+
 	bm.el1<-data.table("Source"=factor(rep(names(bmnl_1),sapply(bmnl_1,function(x) dim(x)[1]))),rbindlist(bmnl_1))
 	setnames(bm.el1,2:3,c("Target","jw"))
 	setkey(bm.el1,Source,Target)
@@ -141,19 +135,19 @@ setkey(rawbel,ut,cr) #sort
 	setnames(bm.el2,2:3,c("Target","jw"))
 	setkey(bm.el2,Source,Target)
 	(bm.el2[,cjw:=1-jw])
-	
+
 	setwd("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/")
 	write.table(bm.el1,file="out/bm.el1.tab",quote=F,sep="\t",row.names=F,col.names=T)
 	write.table(bm.el2,file="out/bm.el2.tab",quote=F,sep="\t",row.names=F,col.names=T)
-	
-	
+
+
 	library(igraph)
 	ig<-graph.adjacency(b.net[,])
 	cig<-optimal.community(ig)
 	pdf("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/ml_igraph_opt.pdf")
 	plot(cig,ig)
 	dev.off()
-	
+
 
 
 	## then extract basic data on each citation
@@ -167,11 +161,11 @@ setkey(rawbel,ut,cr) #sort
 		,l=nchar(cr) # length of string
 		,ca=grepl("^\\*",cr)
 		,b09=grepl("^((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9]))",cr)
-	)] 
+	)]
 }
 
 return(rawbel)
-#}
+}
 t2<-proc.time()
 trg<-data.table(dl=sapply(hd,function(x) any(grepl(" ?((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9])),",labels(x))))) # has date (all true)
 trg[,vl:=sapply(hd,function(x) any(grepl(", V[0-9]",labels(x))))] #has volume
@@ -224,9 +218,9 @@ trg[,aca:=aca&!ca]
 
 samp.c<-list()
 samp.c[which((is.na(trg$vsd))&is.na(trg$psd)&!trg$sl)]<-"nvnp"
-samp.c[which((!is.na(trg$vsd))&is.na(trg$psd)&!trg$sl)]<-"yvnp" 
-samp.c[which((is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl)]<-"nvyp" 
-samp.c[which((!is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl)]<-"yvyp" 
+samp.c[which((!is.na(trg$vsd))&is.na(trg$psd)&!trg$sl)]<-"yvnp"
+samp.c[which((is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl)]<-"nvyp"
+samp.c[which((!is.na(trg$vsd))&!is.na(trg$psd)&!trg$sl)]<-"yvyp"
 samp.c[which(trg$sl)]<-"serial"
 samp.c<-factor(unlist(samp.c))
 trg[,samp.c:=samp.c]
@@ -270,7 +264,7 @@ trg[,`:=`(
 	,ssp=sapply(ssd,function(x) max(which(cen$s<=x))) # lower is better
 	,hsp=sapply(hsd,function(x) max(which(cen$h<=x))) # lower might not be better, but absolute is more useful
 	,ncsp=sapply(ncsd,function(x) max(which(cen$nc<=x))) # lower might not be better, but absolute
-	
+
 	,mxvsp=sapply(mxv,function(x) max(which(cen$mxv<=x))) # if higher than three, assume not a book, percentile not very useful
 	,mnvsp=sapply(mnv,function(x) max(which(cen$mnv<=x))) # if higher than three, assume not a book, percentile not very useful
 	,mxpsp=sapply(mxp,function(x) max(which(cen$mxp<=x))) # won't use, if one assume intro
@@ -314,7 +308,7 @@ trg[mxncsp==-Inf,mxncsp:=Inf]
 trg[mnncsp==-Inf,mnncsp:=Inf]
 
 trg[,ap:=mapply(
-	function(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp) 
+	function(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp)
 		mean(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp)[
 			is.finite(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp))
 		])
@@ -322,7 +316,7 @@ trg[,ap:=mapply(
 )]
 
 trg[,mp:=mapply(
-	function(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp) 
+	function(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp)
 		max(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp)[
 			is.finite(c(dsp,vsp,psp,ssp,hsp,ncsp,mxvsp,mnvsp,mxpsp,mnpsp,mxhsp,mnhsp,mxncsp,mnncsp,lsp))
 		])
@@ -370,7 +364,7 @@ data.frame(lapply(cen,round,3))
 #psd page standard deviation
 #ssd seconds standard deviation
 #hsd height standard deviation
-#dsp percentile of date standard deviation 
+#dsp percentile of date standard deviation
 #vsp percentile of volume standard deviation
 #psp percentile of page standard deviation
 #ssp percentile of seconds standard deviation
@@ -381,7 +375,7 @@ data.frame(lapply(cen,round,3))
 #mnhsp percentile of min height
 #lsp percentile of length/leaves/citations
 #ap average of percentiles, omitting Inf
-#baz log begins with a letter 
+#baz log begins with a letter
 #b09 log beings with date
 #ca corp author source
 #aca mixed corporate author source
@@ -390,7 +384,7 @@ data.frame(lapply(cen,round,3))
 ##
 
 
-####### 
+#######
 
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/FirstTraining_nvnp+/mastersets.RData")
 load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1900-2010FuzzySets/triage.RData")
@@ -522,7 +516,7 @@ read.table()
 		t1<-proc.time()
 		up$et[[i]]<-t1-t0
 		up$rps[[i]]<-nlhd[i]/up$et[[i]]["elapsed"] #rate (per second)
-	
+
 		mph<-mean(unlist(up$rps))*60*60
 		rph<-up$rps[[i]]*60*60
 		cat(
@@ -593,7 +587,7 @@ for(i in c("nvnp","yvnp","nvyp","yvyp")){
 	cleans[[i]]$tab$t<-round(prop.table(cleans[[i]]$tab$c)*100,2)
 }
 
-	
+
 library(mi)
 mitrainog<-data.table(data.frame(lapply(trainog, function(x) as.numeric(replace(x, is.infinite(x),NA)))))
 mitrainog<-mi(mitrainog,n.imp=10,n.iter=100)
@@ -635,7 +629,7 @@ coef<-data.frame(do.call(rbind,coef))
 pkdens.coef<-apply(coef,2,function(x) {y<-density(x);y<-y$x[which.max(y$y)];y})
 den<-apply(coef,2,density)
 }
-}
+
 
 db2bel.f<-function(
 	wok2db
@@ -734,7 +728,7 @@ if(man_recode&is.null(saved_recode)){
 		}
 		require(fastcluster)
 		tt1<-proc.time()
-		if(ls_or_ld=="ls") dis<-stringdistmatrix(cod,cod,method='jw',p=0.1,ncores=recode_cores) # <-lapply(as.list(cod),levenshteinSim,cod) 
+		if(ls_or_ld=="ls") dis<-stringdistmatrix(cod,cod,method='jw',p=0.1,ncores=recode_cores) # <-lapply(as.list(cod),levenshteinSim,cod)
 		if(ls_or_ld=="ld") dis<-stringdistmatrix(cod,cod,method='jw',p=0.1,ncores=recode_cores) # <-lapply(as.list(cod),levenshteinDist,cod)
 		#dis<-do.call(rbind,dis)
 		#if(ls_or_ld=="ls") dis<-1-dis
@@ -820,7 +814,7 @@ if(!manual_audit){
 		for(j in e[u]) cat("",cod[j],sep="\n\t")
 		{veto<-c(veto,e[u]);e<-e[-u]}
 	}
-	#Test if year volume and page are different	
+	#Test if year volume and page are different
 	u<-NULL
 	if(!!length(e))	for(j in 1:length(e)){
 		test1<-sub(".*(((17)|(18)|(19)|(20))[0-9]{2})[^$].*","\\1",cod[e[[j]]])
@@ -945,7 +939,7 @@ bel2mel.f<-function(
 )
 {
 	cat("bel2mel.f aka Plagiat!","Written by Brooks Ambrose\n",sep="\n")
-	
+
 	#subset should be a vector of UT
 	bel2mel<-list()
 	if(is.null(db2bel)&"db2bel.RData"%in%list.files(out)) load(paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
@@ -961,7 +955,7 @@ bel2mel.f<-function(
 		if(trim_pendants&!man_recode) bel2mel$tpcrel<-split(db2bel$bel$cr,db2bel$bel$ut)
 		if(!trim_pendants&man_recode) bel2mel$zcrel<-split(db2bel$bel$zcr,db2bel$bel$ut)
 		if(!trim_pendants&!man_recode) bel2mel$crel<-split(db2bel$bel$cr,db2bel$bel$ut)
-		cat("split.")	
+		cat("split.")
 	}
 	if("utel"%in%type){
 		cat("\nsplitting utel...")
@@ -969,7 +963,7 @@ bel2mel.f<-function(
 		if(trim_pendants&!man_recode) bel2mel$tputel<-split(db2bel$bel$ut,db2bel$bel$cr)
 		if(!trim_pendants&man_recode) bel2mel$zutel<-split(db2bel$bel$ut,db2bel$bel$zcr)
 		if(!trim_pendants&!man_recode) bel2mel$utel<-split(db2bel$bel$ut,db2bel$bel$cr)
-		cat("split.")		
+		cat("split.")
 	}
 	m<-names(bel2mel)
 	for(i in m){
@@ -1027,7 +1021,7 @@ perm.pois.f<-function(
 	s<-network.size(mel2net)
 	maxcombo<-s*(s-1)/2
 	combos<-1:maxcombo
-	choices<-sum(mel2net%e%"ew")	
+	choices<-sum(mel2net%e%"ew")
 	t1<-proc.time()
 	for(i in 1:nsim){
 		cat("\r",i,sep="")
@@ -1043,7 +1037,7 @@ perm.pois.f<-function(
 	}
 	cat("\nSeconds to simulate:")
 	print(proc.time()-t1)
-	
+
 	edist<-table(mel2net%e%"ew")
 	n<-length(unique(unlist(bel2mel[[i]][,1:2])))
 	z<-(n*(n-1)/2)-sum(edist)
@@ -1051,7 +1045,7 @@ perm.pois.f<-function(
 	edist<-c(z,edist)
 	names(edist)<-c("0",n)
 	edist<-as.table(edist)
-	
+
 	cn<-sort(unique(unlist(lapply(perm,names))))
 	permdb<-data.frame(matrix(0,nrow=length(perm),ncol=length(cn)))
 	permdb<-data.frame(permdb,matrix(0,nrow=length(perm),ncol=length(edist)-length(cn)))
@@ -1126,10 +1120,10 @@ mel2net.f<-function(
 		if(count) if("count"%in%names(attributes(bel2mel[[i]]))) {
 			attributes(mel2net[[i]])$count<-attributes(bel2mel[[i]])$count
 			if(rcount){
-				
+
 			}
 		}
-		
+
 	}
 	names(mel2net)<-sub("el$","",names(mel2net))
 	if(!is.null(out)) save(mel2net,file=paste(out,"mel2net.RData",sep=.Platform$file.sep))
@@ -1180,7 +1174,7 @@ plot.mode.projection<-function(
 )
 {
 	require(network)
-	
+
 	el<-data.frame(s=as.character(el[,1]),r=as.character(el[,2]),stringsAsFactors=F)
 	el<-el[order(el$s,el$r),]
 	suppressWarnings(if(trim.pendants=="m1") {
@@ -1201,7 +1195,7 @@ plot.mode.projection<-function(
 		om2l<-length(om2n)
 		(pbmnet<-network(elo,bipartite=om1l,directed=T,matrix.type="edgelist"))
 	}
-	
+
 	### paint logic
 	if(length(pnt.v)&pnt.v2e) for(i in 1:length(pnt.v)) {
 		pnt.e[[length(pnt.e)+1]]<-t(apply(combn(
@@ -1224,13 +1218,13 @@ plot.mode.projection<-function(
 		print(pnt.e)
 		print(pnt.vlty)
 		print(pnt.lty)
-		
+
 	m1n<-sort(unique(el[[1]]))
 	m2n<-sort(unique(el[[2]]))
 	m1l<-length(m1n)
 	m2l<-length(m2n)
 	(bmnet<-network(el,bipartite=m1l,directed=T,matrix.type="edgelist"))
-		
+
 	m<-bmnet[,]
 	w<-grepl(m1.stub,colnames(m))
 	m1<-m[w,!w]%*%t(m[w,!w])
@@ -1240,19 +1234,19 @@ plot.mode.projection<-function(
 
 	m1<-data.frame(s=rownames(m1)[which(!!m1,arr.ind=T)[,1]],r=rownames(m1)[which(!!m1,arr.ind=T)[,2]],ew=m1[which(!!m1)],stringsAsFactors=F)
 	m2<-data.frame(s=rownames(m2)[which(!!m2,arr.ind=T)[,1]],r=rownames(m2)[which(!!m2,arr.ind=T)[,2]],ew=m2[which(!!m2)],stringsAsFactors=F)
-	
+
 	m1<-m1[order(m1$s,m1$r),]
 	m2<-m2[order(m2$s,m2$r),]
-	
+
 	(m1net<-network(m1[,1:2],loops=T,directed=F,matrix.type="edgelist"))
 	(m2net<-network(m2[,1:2],loops=T,directed=F,matrix.type="edgelist"))
-	
+
 	network.vertex.names(m1net)<-m1n
 	network.vertex.names(m2net)<-m2n
 
 	set.edge.attribute(m1net, "ew", m1$ew)
 	set.edge.attribute(m2net, "ew", m2$ew)
-	
+
 	#mats<-matrix(nrow=m1l,ncol=m2l,dimnames=list(m1n,m2n))
 	#system.time(for(i in 1:nrow(el)) mats[el[[1]],el[[2]]]<-1)
 	#matr<-matrix(sample(c(0,0,0,0,1),replace=T,size=24),ncol=6,nrow=4)
@@ -1276,7 +1270,7 @@ plot.mode.projection<-function(
 
 		lay<-list()
 		for(i in names(layout)) lay[[i]]<-layout[[i]](x=network.size(pbmnet))
-			
+
 		plot(pbmnet
 			,vertex.sides=c(rep(m1vsides,om1l),rep(m2vsides,om2l))
 			,vertex.col=vcol
@@ -1291,22 +1285,22 @@ plot.mode.projection<-function(
 		box()
 		mtext(paste("Original",bmain),cex=cex)
 	}
-	
+
 	vcol<-c(rep(m1col,m1l),rep(m2col,m2l))
 	el<-data.frame(as.edgelist(bmnet))
 	if(!is.directed(bmnet)) el<-data.frame(t(apply(el,1,sort)),stringsAsFactors=F)
 	ecolp<-rep(ecol,nrow(el))
 	eltp<-rep(elt,nrow(el))
 	vltp<-rep(vlt,network.size(bmnet))
-	
+
 	if(length(pnt.v)) for(i in 1:length(pnt.v)) vcol[network.vertex.names(bmnet)%in%pnt.v[[i]]]<-names(pnt.v[i])
 	if(length(pnt.e)) for(i in 1:length(pnt.e)) ecolp[which(duplicated(rbind(do.call(cbind,el),pnt.e[[i]]),fromLast=T))]<-names(pnt.e[i])
 	if(length(pnt.vlty)) for(i in 1:length(pnt.vlty)) vltp[network.vertex.names(bmnet)%in%pnt.vlty[[i]]]<-names(pnt.vlty[i])
 	if(length(pnt.lty)) for(i in 1:length(pnt.lty)) eltp[which(duplicated(data.frame(rbind(do.call(cbind,el),pnt.lty[[i]])),fromLast=T))]<-names(pnt.lty[i])
-	
+
 	lay<-list()
 	for(i in names(layout)) lay[[i]]<-layout[[i]](x=network.size(bmnet))
-	
+
 	plot(bmnet
 		,vertex.sides=c(rep(m1vsides,m1l),rep(m2vsides,m2l))
 		,vertex.col=vcol
@@ -1358,7 +1352,7 @@ plot.mode.projection<-function(
 	ecolp<-rep(ecol,nrow(el))
 	eltp<-rep(elt,nrow(el))
 	vltp<-rep(vlt,network.size(m2net))
-	
+
 	if(length(pnt.v)) for(i in 1:length(pnt.v)) vcol[network.vertex.names(m2net)%in%pnt.v[[i]]]<-names(pnt.v[i])
 	if(length(pnt.e)) for(i in 1:length(pnt.e)) ecolp[which(duplicated(rbind(do.call(cbind,el),pnt.e[[i]]),fromLast=T))]<-names(pnt.e[i])
 	if(length(pnt.vlty)) for(i in 1:length(pnt.vlty)) vltp[network.vertex.names(m2net)%in%pnt.vlty[[i]]]<-names(pnt.vlty[i])
@@ -1591,7 +1585,7 @@ lvs[[1]]<-matrix(lvs[[1]],ncol=length(w))
 for(i in 1:length(lvs)) for(j in 1:ncol(lvs[[i]])) {
 	levs<-lvs[[i]][,j]
 	setkeyv(dbl2w,levs)
-	
+
 	samp<-list()
 	for(k in levs) samp[[k]]<-!is.na(dbl2w[[k]])
 	cat("Proportion missing:\n")
@@ -1600,13 +1594,13 @@ for(i in 1:length(lvs)) for(j in 1:ncol(lvs[[i]])) {
 	if(ncol(samp)>1) for(i in 2:ncol(samp)) samp[,1]<-samp[,1]&samp[,i]
 	samp<-as.vector(samp[,1])
 	tp<-!!dbl2w$sel
-	
+
 	nm<-paste(c("w",levs),collapse="")
-	
+
 	dbl2w<-dbl2w[i=samp,1/.N,keyby=c(levs),][dbl2w]
 	dbl2w[(!samp)|is.na(dbl2w$V1),V1:=0]
 	setnames(dbl2w,"V1",nm)
-	
+
 	setkeyv(dbl2w,levs)
 	dbl2w<-dbl2w[i=tp&samp,1/.N,keyby=c(levs)][dbl2w]
 	dbl2w[(!tp)|is.na(dbl2w$V1),V1:=0]
@@ -1646,9 +1640,9 @@ w2tab.f<-function(
 	lvar<-unique(c(lvar,addlev))
 	dbl2w<-dbl2w[j=c(lvar,hg,lg,w),with=F]
 	setkeyv(x=dbl2w,cols=lvar)
-	
+
 	t2prop<-function(x) if(!(is.character(x)|is.factor(x))) {prop.table(x)*100} else {x}
-	
+
 	tl.f<-function(dbl2w,wvar,levs,hg,lg,sort=c("key","order","given"),decreasing=T,subset=NULL){
 	if(!is.null(subset)) {
 		setkeyv(dbl2w,levs)
@@ -1665,9 +1659,9 @@ w2tab.f<-function(
 	init<-tl.f(dbl2w,wvar=sort,sort="order",hg=hg,lg=lg)
 	tl<-list(init$tl)
 	names(tl)<-sort
-	
+
 	wo<-w[w!=sort]
-		
+
 	for(i in wo) tl[[i]]<-tl.f(dbl2w,wvar=i,hg=hg,lg=lg)
 	tl<-tl[w]
 	dup<-!duplicated(tl[[sort]][init$o,get(hg)])
@@ -1709,7 +1703,7 @@ w2tab.f<-function(
 					J[i=dup,j=grep("hc",names(J),value=),with=F]
 					,J[j=grep("lc",names(J),value=),with=F]))
 				)[hlo]
-			
+
 
 			se[[i]]<-list(f=se[[i]],p=copy(se[[i]]))
 			col<-colnames(se[[i]]$p)[-1]
@@ -1745,7 +1739,7 @@ w2tab.f<-function(
 			for(j in c("f","p")) {se[[i]][[j]]<-data.frame(level=se[[i]][[j]][[1]],s.e.=apply(se[[i]][[j]][,-1],1,sd));se[[i]][[j]][[2]]<-round(se[[i]][[j]][[2]],4)}
 		}
 	}
-	
+
 	t2prop<-function(x) if(!(is.character(x)|is.factor(x))) {round(prop.table(x)*100,3)} else {x}
 	for(j in names(tl)) {
 		tl[[j]]<-tl[[j]][init$o]
@@ -1787,9 +1781,9 @@ w2tab.f<-function(
 						,tl[[j]]$f[!h,lapply(.SD, sr),.SDcols=-1]
 					))
 				}
-		
+
 		}
-	
+
 	tab<-list()
 	ow<-names(sort(dbl2w[,lapply(.SD,sum),.SDcols=ow]))
 	for(j in ow){
@@ -1874,3 +1868,317 @@ for(i in n){
 	save(mel2lc,file="mel2lc_rt-f_uw.RData")
 }
 }
+
+rect.dendrogram<-function (tree, k = NULL, which = NULL, x = NULL, h = NULL, border = 2,
+													 cluster = NULL, horiz = FALSE, density = NULL, angle = 45,
+													 text = NULL, text_cex = 1, text_col = 1, xpd = TRUE, lower_rect, hpk=NULL,
+													 ...
+)
+{
+	if (!is.dendrogram(tree))
+		stop("x is not a dendrogram object.")
+	if (length(h) > 1L | length(k) > 1L)
+		stop("'k' and 'h' must be a scalar(i.e.: of length 1)")
+	if(is.null(hpk)) {tree_heights <- heights_per_k.dendrogram(tree)[-1]} else {tree_heights<-hpk[-1]}
+	tree_order <- order.dendrogram(tree)
+	if (!is.null(h)) {
+		if (!is.null(k))
+			stop("specify exactly one of 'k' and 'h'")
+		ss_ks <- tree_heights < h
+		k <- min(as.numeric(names(ss_ks))[ss_ks])
+		k <- max(k, 2)
+	}
+	else if (is.null(k))
+		stop("specify exactly one of 'k' and 'h'")
+	if (k < 2 | k > length(tree_heights))
+		stop(gettextf("k must be between 2 and %d", length(tree_heights)),
+				 domain = NA)
+	if (is.null(cluster))
+		cluster <- cutree(tree, k = k)
+	clustab <- table(cluster)[unique(cluster[tree_order])]
+	m <- c(0, cumsum(clustab))
+	if (!is.null(x)) {
+		if (!is.null(which))
+			stop("specify exactly one of 'which' and 'x'")
+		which <- x
+		for (n in seq_along(x)) which[n] <- max(which(m < x[n]))
+	}
+	else if (is.null(which))
+		which <- 1L:k
+	if (any(which > k))
+		stop(gettextf("all elements of 'which' must be between 1 and %d",
+									k), domain = NA)
+	border <- rep_len(border, length(which))
+	retval <- list()
+	old_xpd <- par()["xpd"]
+	par(xpd = xpd)
+	for (n in seq_along(which)) {
+		if (!horiz) {
+			xleft = m[which[n]] + 0.66
+			if (missing(lower_rect))
+				lower_rect <- par("usr")[3L] - strheight("W") *
+				(max(nchar(labels(tree))) + 1)
+			ybottom = lower_rect
+			xright = m[which[n] + 1] + 0.33
+			ytop = tree_heights[names(tree_heights) == k]
+		}
+		else {
+			ybottom = m[which[n]] + 0.66
+			if (missing(lower_rect))
+				lower_rect <- par("usr")[2L] + strwidth("X") *
+				(max(nchar(labels(tree))) + 1)
+			xright = lower_rect
+			ytop = m[which[n] + 1] + 0.33
+			xleft = tree_heights[names(tree_heights) == k]
+		}
+		rect(xleft, ybottom, xright, ytop, border = border[n],
+				 density = density, angle = angle, ...)
+		if (!is.null(text))
+			text((m[which[n]] + m[which[n] + 1] + 1)/2, grconvertY(grconvertY(par("usr")[3L],
+																																				"user", "ndc") + 0.02, "ndc", "user"), text[n],
+					 cex = text_cex, col = text_col)
+		retval[[n]] <- which(cluster == as.integer(names(clustab)[which[n]]))
+	}
+	par(xpd = old_xpd)
+	invisible(retval)
+}
+
+strdist.dend.picker<-function(
+	hd # must be dendrogram
+	,s1=c(0,.075)
+	,s2=c(0,1)
+	,lightest.val=c(">"=.5,"="=.8)
+	,maxlist=50
+	,must.be.this.short.to.ride=.075
+	,out=NULL
+	,instruct=F
+)
+{
+
+	require(dendextend)
+	require(data.table)
+
+	lintran<-function(x,s1=c(0,1),s2=c(0,1)) {a=diff(s2)/diff(s1);b=s2[1]-a*s1[1];return(a*x+b)}
+	hs<-get_nodes_attr(hd,"height",simplify=T)
+	l<-which(hs==0)
+	n<-which(hs!=0)
+	oc<-sapply(as.list(l),function(x) hs[n[which.max(which(n<x))]])
+	names(oc)<-labels(hd)
+	c<-lintran(oc,s1=s1,s2=s2)
+	c[c>lightest.val[">"]]<-lightest.val["="]
+	labels_colors(hd)<-gray(c)
+
+	hk<-heights_per_k.dendrogram(hd)
+
+	for(i in 1:length(hk)) if(max(table(cutree_1k.dendrogram(hd,k=as.integer(names(hk[i])),use_labels_not_values=FALSE,dend_heights_per_k=hk)))<=maxlist) break
+	#if(i==1) maxlist<-as.integer(names(hk[i]))
+	hdc<-cutree_1k.dendrogram(hd,k=as.integer(names(hk[i])),use_labels_not_values=T,dend_heights_per_k=hk)
+	if(length(hdc)==2) hdc[2]<-1
+	j<-i-1
+	hkh<-hk[ifelse(j!=0,j,1)]
+
+	df<-data.frame(get_nodes_xy(hd),get_nodes_attr(hd,"label"))
+	names(df)<-c("x","y","lab")
+	df<-df[!is.na(df$lab),]
+	rownames(df)<-df$lab
+	df[names(oc),"lh"]<-oc
+	df[names(hdc),"hdc"]<-hdc
+	rownames(df)<-NULL
+
+	df<-data.table(df,key="lab")
+
+	hdc<-split(hdc,hdc)
+	hd<-color_branches(hd,k=length(hdc))
+	lhdc<-length(hdc)
+
+	graphics.off()
+	sets<-list()
+	if(instruct) cat("\rLeft-click to left of name to choose members of a set.\nWhen set is finished, right-click once to start a new set, or twice to advance the page.\nIf you want to accept the entire page, left-click five times, then right click twice.\nIf you make a mistake before starting a new set, select the same name three times, right-click to start a new set, and begin again.")
+	c<-0
+
+	for(i in 1:length(hdc)){
+		sub<-names(hdc[[i]])
+		if(min(df[sub,y])>must.be.this.short.to.ride) next
+		yl<-range(df[sub,x],max(df[sub,x])-maxlist)
+		#cx<-strheight(sub[1])*1.5*length(sub)/diff(yl)*10
+		cx<-.7
+		par(mai=c(.75,0,0,strwidth(sub[which.max(nchar(sub))],units="inches")*cx+1),cex=cx)
+		plot(hd,"triangle",horiz=T,ylim=yl)
+		te<-try(rect.dendrogram(hd,k=lhdc,which=lhdc-i+1,horiz=T,border="red",lty="dotted",hpk=hk),silent=T)
+		if(!inherits(te,"try-error")) rect.dendrogram(hd,k=lhdc,which=lhdc-i+1,horiz=T,border="red",lty="dotted",hpk=hk)
+		loc<-NA
+		e<-1
+		while(!is.null(loc)) {
+			ind<-length(sets)+1
+			nind<-rev(unlist(strsplit(as.character(ind),"")))[1]
+			loc<-locator(type="p",pch=nind,col="red",cex=.5)$y
+			if(is.null(loc)) break
+			sets[[ind]]<-labels(hd)[round(loc)]
+			if(any(table(sets[[ind]])%in%3:4)) sets[[ind]]<-sub
+			segments(x0=0,y0=which(labels(hd)%in%sets[[ind]])
+							 ,x1=0 #max(strwidth(sets[[ind]]))
+							 ,lwd=10,col=hsv(.1*e,1,1,.5))
+			e<-e+1
+		}
+		if(!is.null(out)) {
+			c<-c+1
+			dev.print(pdf,paste(out,c,file="picker_log.pdf",sep=""))
+		}
+	}
+	sets[sapply(sets,function(x) any(table(x)>=5))]<-NULL
+	sets<-lapply(sets,unique)
+	sets[sapply(sets,function(x) any(sapply(setdiff(sets,list(x)),function(y) all(x%in%y))))]<-NULL
+	if(!is.null(out)) save(sets,file=paste(out,file="picker_sets.RData",sep=""))
+	sets
+}
+
+
+write.ergmm<-function(
+	where=stop("\"where\" = folder filepath for scripts",call.=F)
+	,dat=stop("\"dat\" = name of .RData file containing (stat)nets, w. ext",call.=F)
+	,net=stop("\"net\" = named list of (stat)nets",call.=F)
+	,dimensions=2
+	,groups=1
+	,verbosity=2
+	,mcmc.size=10000
+	,mcmc.burn=30000
+	,mcmc.inter=10
+)
+{
+	mod<-paste("d",dimensions,"G",groups,sep="")
+	writeLines(c(
+		"getwd()"
+		,"rm(list=ls())"
+		,"library(statnet)"
+		,"library(latentnet)"
+		,paste("dat<-\"",dat,"\"",sep="")
+		,paste("load(dat)",sep="")
+		,"hoff2fit<-list()"
+		,"time<-round(unclass(Sys.time()))"
+		,paste("for(i in rev(names(",net,"))){",sep="")
+		,"cat(\"\\n<<<<<<<<< \",i,\" >>>>>>>>>\\n\\n\",sep=\"\")"
+		,paste("hoff2fit[[paste(i,\"",mod,"\",sep=\"\")]]<-try(ergmm(",net,"[[i]]~euclidean(d=",dimensions,",G=",groups,"),verbose=",verbosity,",control=control.ergmm(\nsample.size=",mcmc.size,"\n,burnin=",mcmc.burn,"\n,interval=",mcmc.inter,"\n)))",sep="")
+		,paste("save(hoff2fit,file=paste(\"hoff2fit_\",sub(\".RData\",\"\",dat),\"_\",\"",mod,"\",\"_\",time,\".RData\",sep=\"\"))",sep="")
+		,"}"
+	),con=paste(where,.Platform$file.sep,"write.ergmm_",sub(".RData","",dat),"_",mod,".R",sep=""))
+}
+
+cull.f<-function(a,b,cull=.2,noanon=F) {
+	if(any(is.na(b))) {b<-na.omit(b);attributes(b)<-NULL}
+	if(noanon) {
+		if(grepl("\\[ANONYMOUS\\],? ?",a)) stop("k = \"",a,"\"\n",call.=F)
+		b<-sub("\\[ANONYMOUS\\],? ?","",b)
+	}
+	b<-b[nchar(b)>13]
+	if(!is.null(cull)) b<-b[stringdist(a=a,b=b,method="jw",p=.1)<cull]
+	b
+}
+
+unicr<-function(index){
+	yu<-list()
+	cbeg<-list()
+	cend<-list()
+	cat("    ")
+	for(i in 1:dim(index)[1]){
+		d<-dimnames(index)[[1]][i]
+		cat("\b\b\b\b",d)
+		flush.console()
+		yu[[d]]<-length(levels(droplevels(comdb[J(unlist(index[i,]),"CR")]$b)))
+		cbeg[[d]]<-length(levels(droplevels(comdb[J(unlist(index[1:i,]),"CR")]$b)))
+		cend[[d]]<-length(levels(droplevels(comdb[J(unlist(index[i:dim(index)[1],]),"CR")]$b)))
+	}
+	u<-data.frame(yu=unlist(yu),cbeg=unlist(cbeg),cend=unlist(cend))
+	u
+}
+
+poisson_permute<-function(){
+	#permute the feckin distribution
+	perm<-list()
+	maxcombo<-1216*1215/2
+	combos<-1:maxcombo
+	choices<-sum(lc2mel$ew)
+	t1<-Sys.time()
+	for(i in 1:1000){
+		cat("\r",i,sep="")
+		rdist<-sample(combos,size=choices,replace=T)
+		rdist<-table(rdist)
+		z<-maxcombo-length(rdist)
+		rdist<-table(rdist)
+		n<-names(rdist)
+		rdist<-c(z,rdist)
+		names(rdist)<-c("0",n)
+		rdist<-as.table(rdist)
+		perm[[i]]<-rdist
+	}
+	t2<-Sys.time()
+	cat(t2-t1,"minutes")
+
+	cn<-sort(unique(unlist(lapply(perm,names))))
+	permdb<-data.frame(matrix(0,nrow=length(perm),ncol=length(cn)))
+	permdb<-data.frame(permdb,matrix(0,nrow=length(perm),ncol=length(edist)-length(cn)))
+	names(permdb)<-names(edist)
+	for(i in 1:length(perm)) permdb[i,names(perm[[i]])]<-perm[[i]]
+
+	dif<-matrix(edist,nrow=dim(permdb)[1],ncol=dim(permdb)[2],byrow=T)-permdb
+	md<-apply(dif,2,mean)
+	sdd<-apply(dif,2,sd)
+	cid<-apply(dif,2,quantile,prob=c(.05,.95))
+	tad<-apply(dif,2,table)
+	num<-lapply(tad,names)
+	num<-lapply(num,as.numeric)
+
+	dens<-1-(permdb$`0`/maxcombo)
+	mean((1-edist["0"]/maxcombo)-dens)*100
+	sd((1-edist["0"]/maxcombo)-dens)*100
+	mean((1-edist["0"]/maxcombo)-dens)/sd((1-edist["0"]/maxcombo)-dens)
+
+	apply(t(apply(permdb,1,"*",as.numeric(colnames(permdb)))),sum)/maxcombo
+
+	round(cbind(md,sdd,t=md/sdd,p=0,t(cid)),digits=3)
+
+	round(cbind(md=md/maxcombo,sdd=sdd/maxcombo,t=md/sdd,p=0),digits=4)[1:7,]
+	sum(edist[-(1:7)])/maxcombo
+
+	plot(as.table((md/sdd)[1:7]),type="l",ylim=range((md/sdd)[1:7]),lwd=3)
+	abline(h=0,lty="dotted",lwd=3)
+
+	round(cbind(md,sdd,t=md/sdd,p=0),digits=1)[1:7,]
+	sum(edist[-(1:7)])
+
+	mp<-apply(dif/maxcombo,2,mean)
+	sdp<-apply(dif/maxcombo,2,sd)
+	cip<-apply(dif/maxcombo,2,quantile,prob=c(.05,.95))
+
+	round(cbind(mp,sdp,p=0,t(cip)),digits=5)[1:7,]
+	sum(edist[-(1:7)])
+
+	mvd<-mean((sum(((as.numeric(names(edist))-sum(lc2mel$ew)/maxcombo)^2)*edist)/maxcombo)-(apply(apply(permdb,1,"*",(as.numeric(names(edist))-sum(lc2mel$ew)/maxcombo)^2),2,sum)/maxcombo))
+	sddv<-sd((sum(((as.numeric(names(edist))-sum(lc2mel$ew)/maxcombo)^2)*edist)/maxcombo)-(apply(apply(permdb,1,"*",(as.numeric(names(edist))-sum(lc2mel$ew)/maxcombo)^2),2,sum)/maxcombo))
+	cidv<-quantile((sum(((as.numeric(names(edist))-sum(lc2mel$ew)/maxcombo)^2)*edist)/maxcombo)-(apply(apply(permdb,1,"*",(as.numeric(names(edist))-sum(lc2mel$ew)/maxcombo)^2),2,sum)/maxcombo),prob=c(.05,.95))
+	round(c(mvd=mvd,sddv=sddv,tvd=mvd/sddv,p=0,cidv=cidv),digits=4)
+
+	m<-apply(permdb,2,mean)
+	sd<-apply(permdb,2,sd)
+	ci<-apply(permdb,2,quantile,prob=c(.05,.95))
+	cbind(m,sd,ci)
+
+	zscores<-(edist[1:7]-apply(permdb,2,mean))/apply(permdb,2,sd)
+
+
+	apply(matrix(edist,nrow=dim(permdb)[1],ncol=dim(permdb)[2],byrow=T)-permdb,2,mean)
+	apply(matrix(edist,nrow=dim(permdb)[1],ncol=dim(permdb)[2],byrow=T)-permdb,2,sd)
+}
+
+extract.components<-function(graph,quantile=0){
+	components<-component.dist(graph)
+	subgraphs<-list()
+	j<-1
+	for(i in order(components$csize[which(components$csize>=quantile(components$csize, c(quantile)))],decreasing=T)){
+		subgraphs[[j]]<-graph%s%which(components$membership==i)
+		j<-j+1
+	}
+	cat("\nComponent size distribution:")
+	print(table(components$csize))
+	return(subgraphs)
+}
+

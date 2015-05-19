@@ -1,13 +1,29 @@
-source('dissertation_source.R')
-funs<-c('list functions you want to keep'
-	,'wok2db.f'
-	,'db2bel.f'
-	,'lsos'
-	,'.ls.objects'
-)
-rm(list=ls()[!ls()%in%funs])
-cat('\014')
-setwd('~/Dropbox/GitHub/knowledge-survival')
+#############################
+############ TOC ############
+#############################
+
+# SECTION 1
+## 1.1 load database
+## 1.2 extract bimodal edge list
+## 1.3 convert to two unimodal edge lists
+# SECTION 2
+
+###############################
+############ SETUP ############
+###############################
+
+rm(list=ls()) #clear memory
+cat('\014') # clear console
+setwd('~/Dropbox/GitHub/knowledge-survival') # work in Git rep
+source('dissertation_source.R') # load source
+tc<-1 # a counter for which table we are working on
+fc<-1 # a counter for which figure we are working on
+
+###################################
+############ SECTION 1 ############
+###################################
+
+############ 1.1 load database ############
 wok2db<-wok2db.f(
 	dir='in'
 	,out='out'
@@ -15,66 +31,26 @@ wok2db<-wok2db.f(
 	,sample.size=100
 )
 
-db2bel<-db2bel.f(wok2db=wok2db
+############ 1.2 extract bimodal edge list ############
+db2bel<-db2bel.f(
+	wok2db=wok2db
 	,out='out'
 	,man_recode=F
 	,saved_recode=NULL
 )
 
+############ 1.3 resolve identity uncertainty for citations ############
 
-#bel by year
-if(F){
-	db2bel_41_by<-list()
-	years<-sort(as.character(unique(wok2db_41$b[wok2db_41$fields=='PY'])))
-	for(i in years){
-		set<-NULL
-		set<-as.character(wok2db_41$id[wok2db_41$fields=='PY'&wok2db_41$b==i])
-	db2bel_41_by[[i]]<-db2bel.f(wok2db=droplevels(wok2db_41[wok2db_41$id.%in%set,])
-		,out='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year'
-		,man_recode=F
-		,saved_recode=NULL
-		,cut_samp_def=0
-	)
-}
-save(db2bel_41_by,file='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year/db2bel_41_by.RData')
-}
+## 1.3.1 Greedy string comparison (already performed via hoffman)
 
-if(F){
-bel2mel<-bel2mel.f(db2bel=db2bel_41
-	,out='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out'
-	)
-}
+## 1.3.2 pairwise comparisons within greedy sets
 
-#mel by year
-if(F){
-	bel2mel_41_by<-list()
-	for(i in years) {bel2mel_41_by[[i]]<-bel2mel.f(db2bel=db2bel_41_by[[i]]
-		,out='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year'
-		)
-	}
-	save(bel2mel_41_by,file='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year/bel2mel_41_by.RData')
+############ 1.4 convert to two unimodal edge lists ############
 
-}
-
-#net by year
-if(F){
-	mel2net_41_by<-list()
-	for(i in years){
-	mel2net_41_by[[i]]<-mel2net.f(bel2mel_41_by[[i]])
-	}
-	save(mel2net_41_by,file='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year/mel2net_41_by.RData')
-
-}
-
-#pois by year
-if(F){
-	thatgirlis_41_by<-list()
-	for(i in years){
-		if((!length(mel2net_41_by[[i]]))|class(mel2net_41_by[[i]]$tpcrel)=='logical') {thatgirlis_41_by[[i]]<-NULL;next}
-		thatgirlis_41_by[[i]]<-thatgirlis.f(mel2net_41_by[[i]]$tpcrel)
-	}
-	save(thatgirlis_41_by,file='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/by_year/thatgirlis_41_by.RData')
-}
+bel2mel<-bel2mel.f(
+	db2bel=db2bel
+	,out='out'
+)
 
 
 
@@ -977,21 +953,7 @@ write.table(data.frame(so=rownames(t),pu=colnames(u)[t[,2]],c=u[t])
 }
 
 
-if(F){
-### should do same for authors, but need to do fuzzy set replacement on author names. Treat AF as if it were CR and it should work
-source('/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R')
-load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData')
-wok2db_41<-wok2db_41[wok2db_41$fields!='CR',]
-rownames(wok2db_41)<-NULL
-wok2db_41$fields[wok2db_41$fields=='AF']<-'CR'
 
-##happens to make a co-authorship network!
-require(parallel)
-afbel<-db2bel.f(wok2db=wok2db_41,out='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/AFout',man_recode=T,recode_cores=detectCores(),manual_audit=T)
-# 3799 Anonymouses cut
-#hrm, fuzzy matching fixed! and fast! parallelelelel
-#coool, coauthorship network
-}
 
 # now we could add authors as a column in the population statistics
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/AFout/db2bel_AF_41.RData')
@@ -1385,12 +1347,6 @@ load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RD
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/mel2net_41.RData')
 library(network)
 
-##### new mel that includes isolates
-if(F){
-	source('/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R')
-	bel2mel<-bel2mel.f(db2bel=db2bel,out='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out')
-	mel2net<-mel2net.f(bel2mel)
-}
 
 uth<-5 #set upper threshold for summary table
 ddt<-list()
@@ -1814,3 +1770,394 @@ load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/2015out/wok2db_15_5.
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/2015out/wok2db_15_6.RData')
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/2015out/wok2db_15_7.RData')
 allcr1900_2015<-rbind(wok2db_15_1,wok2db_15_2,wok2db_15_3,wok2db_15_4,wok2db_15_5,wok2db_15_6,wok2db_15_7,wok2db_41,wok2db_80)
+
+if(F){
+	rm(list=ls())
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/glmfpq.RData")
+
+	g<-glmfpq$g
+	g<-g[as.logical(sapply(g,length)!=7)]
+	for(i in 1:length(g)) g[[i]]<-g[[i]][-(1:7)]
+	g<-g[!duplicated(g,fromLast=T)]
+	g<-lapply(lapply(lapply(g,strsplit," "),sapply,rbind),t)
+
+	q<-glmfpq$q
+	q<-q[as.logical(sapply(q,length)!=7)]
+	for(i in 1:length(q)) q[[i]]<-q[[i]][-(1:7)]
+	q<-q[!duplicated(q,fromLast=T)]
+	for(i in names(q)) q[[i]]<-q[[i]][-length(q[[i]])]
+	q<-lapply(lapply(lapply(q,strsplit," "),sapply,rbind),t)
+
+	f<-glmfpq$f
+
+	library(statnet)
+	library(latentnet)
+
+	n<-list()
+	c<-list() #count distributions
+	for(i in names(g)) {
+		n[[i]]<-network(g[[i]][,1:2],matrix.type="edgelist",directed=F)
+		set.edge.attribute(n[[i]],attrname="ew",value=as.integer(g[[i]][,3]))
+		c[[i]]<-c("0"=sum(!n[[i]][,]),table(n[[i]]%e%"ew"))
+		add.isolates(n[[i]],n=length(f[[i]])-network.size(n[[i]]))
+		c[[i]]<-list(
+			"o"=c[[i]]
+			,"e.mean"=table(rpois(sum(c[[i]]),mean(rep(c[[i]],names(c[[i]])))))
+			,"e.var"=table(rpois(sum(c[[i]]),var(c[[i]]))))
+	}
+	save(n,file="h.com.nets1941.RData")
+
+	pdf("com_graph.pdf")
+	for(i in rev(names(n))){
+		plot(n[[i]]
+				 ,displaylabels=T
+				 ,label.pos=5
+				 ,label.cex=.5
+				 ,vertex.col="white"
+				 ,vertex.border="gray"
+				 ,vertex.cex=1.5
+				 ,edge.lwd="ew"
+				 ,main=i)
+	}
+	dev.off()
+
+	## must load write.ergmm
+
+	for(i in 1:5){
+		write.ergmm(where="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hoff"
+								,dat="h.com.nets1941.RData"
+								,net="n"
+								,groups=i
+								,dimensions=1
+								,verbosity=4
+		)}
+	setwd("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hoff")
+	n<-n[paste("k",20:23,sep="")]
+
+	###report out logs
+	setwd("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/hoff")
+	fls<-grep("write.ergmm.+out",list.files(),value=T)
+	r<-list()
+	for(i in fls){
+		r$raw[[i]]<-readLines(i)
+	}
+	names(r$raw)<-sub(".+_([^.]+).+","\\1",names(r$raw))
+	r$beg<-lapply(r$raw,grep,pattern="^<")
+	names(r$beg)<-names(r$raw)
+	r$end<-lapply(r$beg,"-",2)
+	for(i in names(r$end)) r$end[[i]]<-c(r$end[[i]][-1],length(r$raw[[i]])-4)
+	r$sub<-list()
+	for(i in names(r$raw)) for(j in 1:length(r$beg[[i]])) r$sub[[i]][[sub("<+ ([^ ]+) >+","\\1",r$raw[[i]][r$beg[[i]]][j])]]<-r$raw[[i]][r$beg[[i]][j]:r$end[[i]][j]]
+
+	s<-array(NA,dim=c(length(names(r$sub[[1]])),length(names(r$sub)),2),dimnames=list(k=names(r$sub[[1]]),G=names(r$sub),att=c("fin","bic")))
+	s[,,"fin"]<-grepl("Finished.",unlist(r$raw)[unlist(r$end)])
+
+	#get bic from hoffman!
+	load(tail(grep("fit2bic.+RData",list.files(),value=T),1))
+	s[,,"bic"]<-as.numeric(unlist(fit2bic))
+	save(s,file="s.RData")
+
+	#plot bics
+	load("s.RData")
+	pdf("bic.pdf",h=22,w=4)
+	plot.new()
+	plot.window(xlim=c(1,5), ylim=log(range(s[,,"bic"],na.rm=T)))
+	text(labels=rownames(s)[!is.na(s[,1,"bic"])],x=.925,y=log(s[!is.na(s[,1,"bic"]),1,"bic"]),cex=.5)
+	abline(v=1:5,col="lightgray")
+	apply(log(s[!is.na(s[,1,"bic"]),,"bic"]),1,lines)
+	axis(1)
+	axis(2)
+	title(main="BIC for Groups in k3:k50")
+	title(xlab="G")
+	title(ylab="BIC")
+	box()
+	dev.off()
+
+	#choosing cross section based on low variance convention
+	(plt<-cbind("#"=sapply(glmfp[["f"]],length),sd=sapply(sapply(glmfp[["f"]],sapply,length),sd)))
+	pdf("community_sizebysd.pdf")
+	plot(plt,xlab="# communites",ylab="SD community size",type="n",main=c("Variation in Community Size","by Number of Communities"))
+	lines(plt,col="lightgray")
+	text(plt,labels=names(glmfp[["f"]]),cex=.45,offset=0,pos=4)
+	dev.off()
+
+	(k8<-table(sapply(glmfp[["f"]]$k8,length)))
+	(k9<-table(sapply(glmfp[["f"]]$k9,length)))
+	nam<-sort(unique(as.integer(c(names(k8),names(k9)))))
+	kcom<-matrix(nrow=length(nam),ncol=2,dimnames=list(nam,c("k8","k9")))
+	kcom[names(k8),"k8"]<-k8
+	kcom[names(k9),"k9"]<-k9
+	cbind(kcom,apply(kcom,1,diff))
+
+	d8<-density(sapply(glmfp[["f"]]$k8,length),bw=1.822)
+	d9<-density(sapply(glmfp[["f"]]$k9,length),bw=1.822)
+	plot(d8,ylim=range(d8$y,d9$y),xlim=range(d8$x,d9$x),lty=2)
+	lines(d9)
+
+	#k9 appears to be better because in k8 variance is balanced by inclusion of one big community and a bunch of minimum communities
+
+
+	###########################
+	# match dates to clusters #
+	###########################
+	#require loaded bel2mel, wok2db
+	rm(list=ls())
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/bel2mel_41.RData")
+	library(data.table)
+	py<-data.table(droplevels(wok2db_41[wok2db_41$fields=="PY",-2]),key="b.ind.")
+	m<-list()
+	system.time(for(i in 1:dim(bel2mel$tpcrel)[1]) m[i]<-as.integer(as.character(py[bel2mel$tpcrel$x[[i]]]$b)))
+	bel2mel$tpcrel$py<-m
+	rm(m)
+
+	##match cluster ids
+	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/glmfpq.RData")
+	l<-glmfpq$l[["k9"]]
+	rm(glmfpq)
+
+}
+
+### hoffZCRcompiler.R
+if(F){
+
+	if(F){ rm(list=ls())
+				 require(data.table)
+				 long<-data.table(k=list())
+	}
+
+	all<-c(
+		grep("similars",list.files("/Volumes/Iomega_HDD/go",recursive=T,full.name=T),value=T)
+		,grep("similars",list.files("/Volumes/Iomega_HDD/miss",recursive=T,full.name=T),value=T)
+	)
+	bt<-table(type.convert(sub(".+_Sbatch([^_]+)_.+","\\1",all)))
+	btn<-as.integer(names(bt))
+	which(!(1:max(btn))%in%btn)
+	bt[bt!=10]
+
+	cat("\n")
+	t0<-proc.time()
+
+	for(h in 1:max(btn)){
+		batch<-grep(paste("_Sbatch",h,"_",sep=""),all,value=T)
+		### first take all partitions and combine horizontally
+
+		load(batch[1])
+		dat<-data.table(k=savedsim)
+		for(i in 2:length(batch)) {
+			load(batch[i])
+			dat[,paste("P",i,sep=""):=savedsim]
+		}
+
+		dat<-apply(dat,1,FUN=function(x) {x<-unlist(list(x));names(x)<-NULL;x})
+		names(dat)<-names(savedsim)
+		dat<-lapply(dat)
+		### eliminate zero length strings
+
+		long[[length(long)+1]]<-dat
+		cat("\rFinished with",h,"or",round(h/max(btn)*100,3),"% complete")
+	}
+	t1<-proc.time()
+	t1-t0
+	long<-do.call(c,long)
+	long<-data.table(k=names(long),set=long,key="k")
+
+	#save(long,file="/Volumes/Iomega_HDD/long.RData")
+
+	### remove "[ANONYMOUS]"
+	t0<-proc.time()
+
+	t1<-proc.time()
+	t1-t0
+
+	anon<-grepl("\\[ANONYMOUS\\],? ?",long[,k])
+	alarm()
+	long[anon,set:=lapply(set,FUN=function(x) sub("\\[ANONYMOUS\\],? ?","",x))]
+	long[anon,set:=lapply(set,FUN=function(x) x[nchar(x)>13])]
+	long[anon,k:=sub("\\[ANONYMOUS\\],? ?","",k)]
+	t2<-proc.time()
+	t2-t1
+
+	cull<-.1
+
+	#load cull.f
+
+	if(F){t<-data.table(a=replicate(20,paste0(sample(letters,5),collapse="")))
+				t[,b:=replicate(20,sample(t$a,6),simplify=F)]
+	}
+	long[anon,set:=mapply(cull.f,a=k,set,SIMPLIFY=F)]
+	t3<-proc.time()
+	t3-t2
+
+	setkey(long,k)
+	if(F) system.time(save(long,file="/Users/bambrose/long.RData"))
+	### combine overlapping sets
+	#if(T) {
+	library(data.table)
+	library(stringdist)
+	system.time(load("/Users/bambrose/long.RData"))
+	alarm()
+	cull<-.1
+	cull.f<-function(a,b,cull=.2,noanon=F) {
+		if(any(is.na(b))) {b<-na.omit(b);attributes(b)<-NULL}
+		if(noanon) {
+			if(grepl("\\[ANONYMOUS\\],? ?",a)) stop("k = \"",a,"\"\n",call.=F)
+			b<-sub("\\[ANONYMOUS\\],? ?","",b)
+		}
+		b<-b[nchar(b)>13]
+		if(!is.null(cull)) b<-b[stringdist(a=a,b=b,method="jw",p=.1)<cull]
+		b
+	}
+	#}
+	grp<-list()
+	t3<-proc.time()
+	for(i in 1:nrow(long)){
+		if(is.na(long[i,set])) {cat("\rSkipping:",i,"\t");next}
+		if(nchar(long[i,k])<14) {long[i,set:=NA,nomatch=0];next}
+		cat("\rOn:",i,"\b...\t")
+		init<-sub("\\[ANONYMOUS\\],? ?","",unique(unlist(long[i,set,nomatch=0])))
+		if(!is.null(cull)) init<-cull.f(a=long[i,k],b=init,cull=cull)
+		grp[[i]]<-list(unique(unlist(long[init,list(mapply(cull.f,a=k,b=set,cull=cull,noanon=T,SIMPLIFY=F)),nomatch=0])))
+		rem<-setdiff(unlist(grp[[i]]),init)
+		long[init,set:=NA]
+		while(length(rem)){
+			init<-unlist(grp[[length(grp)]])
+			grp[[length(grp)]][[2]]<-list(unique(unlist(mapply(cull.f,a=rem,b=long[rem,set,nomatch=0],cull=cull,noanon=T,SIMPLIFY=F))))
+			grp[[length(grp)]]<-list(unique(unlist(grp[[length(grp)]])))
+			long[rem,set:=NA]
+			rem<-unique(setdiff(unlist(grp[[i]]),init))
+			cat("\ri:",i,"Length rem:",length(rem),"First:",rem[1],"\t")
+		}
+		grp[[length(grp)]]<-sort(unlist(grp[[length(grp)]]))
+		cat("\r\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tCompleted",i,"or",round(i/nrow(long)*100,3),"%\t")
+	}
+	t4<-proc.time()
+	alarm()
+	t4-t3
+	save(grp,file="grp.RData")
+	alarm()
+	t4-t0
+
+
+	### manually audit sets
+}
+
+if(F){
+	source("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")
+	library(data.table)
+
+	setwd("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/ECON")
+	load("ECONwok2db.RData")
+	comdb<-wok2db
+	setwd("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/SOC")
+	load("SOCwok2db.RData")
+	comdb<-data.table(rbind(comdb,wok2db))
+	rm(wok2db)
+	setkey(comdb,fields,b.ind.)
+	#comdb[,b:=as.character(comdb$b)]
+	#setkey(comdb,fields,b.ind.)
+	#comdb[J("CR"),b:=gsub("(\\w)","\\U\\1",sub(", DOI .+","",comdb$b[comdb$fields=="CR"]),perl=T)] #remove DOI & capitalize
+
+	pyj9<-droplevels(data.table(py=comdb["PY",b]$b,j9=comdb["NR",b]$b,key="py"))
+	(pyj9<-table(pyj9))
+	pynr<-droplevels(data.table(py=comdb["PY",b]$b,nr=as.integer(comdb["NR",b]$b),key="py"))
+	pynr<-pynr[,sum(nr),by=py]
+	setnames(pynr,old=c("py","V1"),new=c("py","nr"))
+	pynr[,cs:=cumsum(pynr$nr)]
+	(pynr[,cut:=pynr$cs%/%round(pynr["1970"]$cs/20)])
+	cod<-levels(droplevels(comdb["CR",b]$b))
+	tu<-length(cod)
+
+	for(i in 6:10*100) assign(paste("dis",i,sep=""),do.call(rbind,lapply(as.list(cod[1:i]),levenshteinSim,cod[1:i])))
+	plot(rev(lsos(,n=20)[grep("^dis",dimnames(lsos(n=20))[[1]]),"Size"]))
+	size<-rev(lsos(n=20)[grep("^dis",dimnames(lsos(n=20))[[1]]),"Size"])
+	#write.table(cbind(size,size2),file="size.txt",sep="\t")
+	p<-1:150000
+	y<-size
+
+	x<-1:10*100
+	x2<-x^2
+	sqx<-x^.5
+
+	lm<-lm(y~x-1)
+	qm<-lm(y~x+x2-1)
+	sm<-lm(y~x+sqx-1)
+	summary(lm)
+	summary(qm)
+	summary(sm)
+	anova(lm,qm)
+	anova(lm,sm)
+
+	lm$coef
+	sm$coef
+	qm$coef
+
+	lp<-lm$coef*p/1024/1024
+	qp<-((qm$coef[1]*p)+(qm$coef[2]*p^2))/1024/1024
+	sp<-((sm$coef[1]*p)+(qm$coef[2]*p^.5))/1024/1024
+
+	max(which(lp<2048))
+	max(which(qp<2048)) #15000
+	max(which(sp<2048))
+
+
+
+	dates<-sort(as.character(unique(comdb[J("PY")]$b)))
+	journals<-as.character(unique(comdb[J("J9")]$b))
+	index<-list()
+	setkey(comdb,fields,b)
+	system.time(for(i in dates) for(j in journals) {cat("\r",i,j,"\t\t");index[[j]][[i]]<-intersect(comdb[J("PY",i)]$b.ind.,comdb[J("J9",j)]$b.ind.)})
+	index<-do.call(cbind,index)
+	save(index,file="index.RData")
+	setkey(comdb,b.ind.,fields)
+
+	# load unicr
+
+	system.time(u<-unicr(index=index))
+
+	u<-data.frame(yu=u[-71,],gain=diff(u$cbeg),loss=diff(u$cend),net=diff(u$cbeg)+diff(u$cend),p=u$yu[-71]+diff(u$cbeg)+diff(u$cend),e=u$yu[-71]+diff(u$cbeg)+diff(u$cend)-u$yu[-1])
+
+	batchs<-12000
+	setkey(comdb,b.ind.,fields,b)
+	j<-1
+	rang<-list()
+	nun<-list()
+	while(!is.na(dimnames(index)[[1]][j])){
+		cbeg<-list()
+		cat("\n    ")
+		for(i in j:dim(index)[1]){
+			d<-dimnames(index)[[1]][i]
+			cat("\b\b\b\b",d)
+			cbeg[[d]]<-length(unique(comdb[J(unlist(index[j:i,]),"CR")]$b))
+			if(cbeg[[d]]>batchs) {cbeg[[d]]<-NULL;nun[[length(nun)+1]]<-cbeg[length(cbeg)];break}
+		}
+		rang[[length(rang)+1]]<-names(cbeg)
+		j<-which(dimnames(index)[[1]]==tail(rang[[length(rang)]],1))+1
+	}
+	if(is.na(dimnames(index)[[1]][j])) nun[[length(nun)+1]]<-cbeg[length(cbeg)]
+	cbind(unlist(nun))
+
+	for(i in 1:length(rang)){
+		out<-paste(getwd(),.Platform$file.sep,head(rang[[i]],1),ifelse(length(rang[[i]])==1,"",paste("-",tail(rang[[i]],1),sep="")),sep="")
+		system(paste("mkdir \"",out,"\"",sep=""))
+		wok2bel.f(wok2db=comdb[J(unlist(index[rang[[i]],]))],out=out,man_recode=T)
+	}
+
+	#seams: 1916:1919
+	out<-paste(getwd(),.Platform$file.sep,1916,"-",1919,sep="")
+	system(paste("mkdir \"",out,"\"",sep=""))
+	wok2bel.f(wok2db=comdb[J(unlist(index[as.character(1916:1919),]))],out=out,man_recode=T)
+	#run it again using
+	source("/Users/bambrose/Dropbox/2013-2014/2013-2014_A_Fall/netBYjournalBYyear/dissertation_source.R")
+	wok2bel.f(wok2db=comdb[J(unlist(index[as.character(1916:1919),]))],out=out,man_recode=T,height=20,periodicals=c("MOTOR AGE","LABOUR GAZETTE","RAILWAY AGE GAZETTE","COM FIN CHRON S","OFFICIAL B","EC CIRCULAR","COMMERCE FINANC","NEW YORK J COMM","WOMENS WEAR","MONITEUR","NZ OFFICIAL YB","BANK ARCH","J COMMERCE","MONTHLY LABOR RE","COMMERCIAL AM","NEGLIGENCE COMPENSAT","ANNALIST","ECONOMIST","J DOCUMENTS HOUSE DE","SO LUMBERMAN","AM LUMBERMAN","NATIONS BUSINESS","P GLASS BOTTLE BLOWE","STONE CUTTERS J","IRON MOLDERS J","J POLITICAL EC","EC J","AM J SOCIOLOGY","Q J EC","POLITICAL SCI Q","FORUM","ANN AM ACAD","NILES REGISTER","WOMAN WORKER"))
+
+
+
+	#research decision: tables in same statiscal or administrative series are different if from different years
+	#research decision: if no year is given, different volumes are treated differently
+	#research decision: articles titled part 1 and part 2, etc, can be treated as one
+	#research decision: newspapers really shouldn't be treated as the same
+
+
+
+}
