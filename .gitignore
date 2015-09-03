@@ -4,3 +4,12 @@
 /in
 /out
 /nids
+/supplemental
+*.Rproj.user
+*.RData
+*.Rproj
+*.pdf
+*.PDF
+*.ps
+*.xls
+*.xlsx

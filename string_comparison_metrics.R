@@ -139,7 +139,7 @@ comps[is.na(sdt[list(comps$k,comps$i),au])|is.na(sdt[list(comps$k,comps$j),au]),
 comps[,jwau:=stringdist(sdt[list(comps$k,comps$i),au],sdt[list(comps$k,comps$j),au],method='jw',p=.1)]
 sl[sample(unique(comps$k[is.na(comps$jwau)]),3)]
 comps[,dfpy:=abs(sdt[list(comps$k,comps$i),py]-sdt[list(comps$k,comps$j),py])]
-comps[,dfpy2:=dfpy^2]
+comps[,dfpy2:=as.integer(dfpy^2)]
 comps[,jwso:=stringdist(sdt[list(comps$k,comps$i),so],sdt[list(comps$k,comps$j),so],method='jw',p=.1)]
 sl[sample(unique(comps$k[is.na(comps$jwso)]),3)]
 comps[,dfv:=abs(sdt[list(comps$k,comps$i),nv]-sdt[list(comps$k,comps$j),nv])]
@@ -153,19 +153,20 @@ function(x,y) {
 ,x=sdt[list(comps$k,comps$i),np]
 ,y=sdt[list(comps$k,comps$j),np])]
 sl[sample(unique(comps$k[is.na(comps$dfp)]),3)]
-comps[,mfp:=mapply(FUN=
+comps[,mfp:=as.integer(mapply(FUN=
 function(x,y) {
 	if(is.null(x)|is.null(y)) {u<-NA} else {u<-round(min(unlist(lapply(x,function(z) mean(c(z,min(unlist(y))))))))}
 	u
 }
 ,x=sdt[list(comps$k,comps$i),np]
-,y=sdt[list(comps$k,comps$j),np])]
+,y=sdt[list(comps$k,comps$j),np]))] # rounding caused data class problem on reading hand code from disk, so as.integer
 comps[,dfch:=abs(sdt[list(comps$k,comps$i),nch]-sdt[list(comps$k,comps$j),nch])]
 sl[sample(unique(comps$k[is.na(comps$dfch)]),3)]
 comps[,dft:=abs(sdt[list(comps$k,comps$i),t]-sdt[list(comps$k,comps$j),t])]
 sl[sample(unique(comps$k[is.na(comps$dft)]),3)]
 comps[,pyxvxp:=mapply(FUN=function(w,x,y,z) prod(na.omit(c(w,x,y,z))),w=dfpy,x=dfv,y=dfp,z=dfch)]
-#comps[,cpauxi:=mapply(FUN=function(v,w,x,y,z) prod(na.omit(c(v,w,x,y,z))),v=cpau,w=dfpy,x=dfv,y=dfp,z=dfch)] # wanted to try to interact corporate author
+comps[,cpauxpy:=mapply(FUN=function(v,w) prod(na.omit(c(v,w))),v=cpau,w=dfpy)] # wanted to try to interact corporate author
+comps[,cpauxjw:=mapply(FUN=function(v,w) prod(na.omit(c(v,w))),v=cpau,w=jw)]
 comps[,prob:=1/.N,by=k]
 t4<-proc.time()
 round((t4-t3)/60,3)
@@ -269,7 +270,7 @@ frame<-comps[c('A','B','C','D','E')] # sampling frame, 97.34% of data
 rej<-comps[!c('A','B','C','D','E')] # rejected for limited info
 
 frame[,train:=F]
-frame[,match:=NA]
+frame[,match:=NA_integer_]
 frame[,ix:=1:nrow(frame)]
 samp.f<-function(x,y){
 	set.seed(12345)
@@ -293,12 +294,12 @@ save(frame,file='frame.RData')
 write.csv(frame[frame$train,],file='frame.train.csv',na='',row.names=F) # convert to .xls to protect hand coding
 write.csv(frame[frame$test,],file='frame.test.csv',na='',row.names=F) # convert to .xls to protect hand coding
 
-cat('\014')
+#cat('\014')
 ### Import hand codes
 setwd('/Users/bambrose/Dropbox/GitHub/knowledge-survival')
 load('frame.RData')
 library(data.table)
-hand<-data.table(read.csv('frame.train.csv',colClasses=sapply(frame,class)))
+hand<-data.table(read.csv('frame.train.hand.csv',colClasses=sapply(frame,class)))
 hand[,match:=as.integer(!is.na(match))]
 save(hand,file="hand.RData")
 
@@ -356,7 +357,7 @@ save(lb,file='lb.RData')
 setwd('/Users/bambrose/Dropbox/GitHub/knowledge-survival')
 library(data.table)
 load('lb.RData')
-test<-data.table(read.csv('frame.test.csv',colClasses=sapply(frame,class)))
+test<-data.table(read.csv('frame.test.hand.csv',colClasses=sapply(frame,class)))
 test[,match:=as.integer(!is.na(match))]
 test[,list(prop=mean(match)),by=batch]
 setkey(test,batch)
@@ -485,26 +486,185 @@ library(data.table)
 el<-list()
 for(i in names(pba)){
 	pass<-pba[[i]]$dat$match
-	el[[i]]<-pba[[i]]$dat[pass,list(k,i,j)]
-	el[[i]]<-el[[i]][,list(
-		cr1=mapply(FUN=function(k,ij) sl[[k]][ij],k=k,ij=i)
-		,cr2=mapply(FUN=function(k,ij) sl[[k]][ij],k=k,ij=j)
-		)]
+	el[[i]]<-pba[[i]]$dat[,list(k,i,j,pred)]
+	el[[i]][,`:=`(i=mapply(FUN=function(k,ij) sl[[k]][ij],k=k,ij=i)
+		,j=mapply(FUN=function(k,ij) sl[[k]][ij],k=k,ij=j)
+	)]
+	el[[i]][!pass,pred:=pred-1]
 }
 el<-rbindlist(el)
-setkey(el,cr1,cr2)
+setkey(el,k)
 levs<-sort(unique(unlist(el)))
-el<-cbind(as.numeric(factor(el$cr1,levels=levs)),as.numeric(factor(el$cr2,levels=levs)))
-net<-graph.edgelist(matrix(el,ncol=2), directed=F)
+el[,`:=`(
+	i=as.numeric(factor(i,levels=levs))
+	,j=as.numeric(factor(j,levels=levs))
+	)]
+w<-el$i>el$j
+eli<-el$i[w]
+el[w,i:=j]
+el[w,j:=eli]
+rm(w,eli)
+setkey(el,i,j)
+bf<-nrow(el)
+el<-unique(el)
+cat('\n',bf-nrow(el),'duplicate edges removed\n')
+setkey(el,k)
+net<-graph.edgelist(as.matrix(el[,list(i,j)]), directed=F)
 V(net)$name<-levs
-comps<-decompose.graph(net,min.vertices=0)
-btwn<-sapply(comps,FUN=function(x) max(betweenness(x)))
-oc<-lapply(comps,optimal.community)
-mod<-sapply(oc,modularity)
-round(quantile(mod),5)
-pdf('sticksnballs.pdf',h=7.5,w=10)
-for(i in order(mod,decreasing=T)[1:100]) plot(optimal.community(comps[[i]]),comps[[i]])
-dev.off()
+E(net)$weight<-el$pred
+mem<-el[,list(v=list(unique(c(i,j)))),by=k][,v]
+system.time(compo<-lapply(mem,FUN=function(x) induced.subgraph(net,x)))
 
+# exploratory plot of spinglass effectiveness
+ns<-sapply(compo,function(x) length(V(x)))
+par(mfrow=c(2,2),mar=rep(.9,4))
+s<-sample(1:length(compo),4,p=ns)
+lintran<-function(x,s1=c(0,1),s2=c(0,1)) {a=diff(s2)/diff(s1);b=s2[1]-a*s1[1];return(a*x+b)}
+for(i in s){
+wt<-E(compo[[i]])$weight
+wt[wt<0]<-wt[wt<0]+1
+wfr<-layout.fruchterman.reingold(compo[[i]],weights=wt)
+plot.communities(
+	spinglass.community(compo[[i]],spins=length(V(compo[[i]])),implementation="neg")
+	,compo[[i]]
+	,layout=wfr
+	,main=i
+	,edge.color=sapply(lintran(wt,s2=c(.1,1)),function(x) gray(0,alpha=x))
+	,edge.label=as.character(round(wt,2))
+	,edge.label.cex=.75
+	,edge.label.family='Arial Narrow'
+	,edge.label.color='darkgray'
+	,vertex.label.cex=.75
+	,vertex.label.family='Arial Narrow'
+
+)
+}
+
+system.time(
+oc<-lapply(compo,function(x) spinglass.community(x,spins=length(V(x)),implementation='neg'))
+)
+
+
+
+save(compo,file='compo.RData')
+save(oc,file='oc.RData')
+
+# could improve feature engineering, but will go with one more test, proportion of boundary crossing ties
+#setwd('/Users/bambrose/Dropbox/GitHub/knowledge-survival')
+#load('compo.RData')
+#load('oc.RData')
+library(igraph)
+library(data.table)
+
+mod<-sapply(1:length(oc),function(i) modularity(oc[[x]],weights=))
+cmpx<-sapply(oc,FUN=function(x) length(unique(x$membership)))
+cmpxs<-list()
+for(i in which(cmpx>1)) cmpxs[[i]]<-split(1:oc[[i]]$vcount,f=oc[[i]]['membership'])
+
+pbct<-list()
+for(i in which(cmpx>1)){
+	pbct[[i]]<-c(ix=i,
+		it=sum(sapply(cmpxs[[i]],FUN=function(x) length(E(induced.subgraph(compo[[i]],x))))) # count of inside ties
+		,at=length(E(compo[[i]])) # count of all ties
+		,nv=length(V(compo[[i]])) # count of all citations
+	)
+}
+(cmx<-data.table(do.call(rbind,pbct))) # matrix of complex sets
+setkey(cmx,ix)
+cmx[,`:=`(
+	bct=at-it # count of boundary crossing ties
+	,pbct=1-(it/at) # proportion of boundary crossing ties
+	,mod=mod[ix] # modularity
+)]
+q<-list(
+	bct=quantile(cmx$bct,seq(0,1,.01))
+	,pbct=quantile(cmx$pbct,seq(0,1,.01))
+	,nv=quantile(cmx$nv,seq(0,1,.01))
+	,mod=quantile(cmx$mod,seq(0,1,.01))
+)
+cmx[,`:=`(
+	qbct=sapply(bct,FUN=function(x) sum(x<q$bct)-1)
+	,qpbct=sapply(pbct,FUN=function(x) sum(x<q$pbct)-1)
+	,qmod=sapply(mod,FUN=function(x) sum(x>q$mod))
+	,qnv=sapply(nv,FUN=function(x) sum(x>q$nv))
+)]
+cmx[,tot:=qmod+qnv] # qbct+qpbct+qmod+qnv
+q$tot<-quantile(cmx$tot,seq(0,1,.01))
+cmx[,qtot:=sapply(tot,FUN=function(x) sum(x>q$tot))] # high values mean use the community structure, low values ignore community structure
+
+
+#inspect results
+h<-hist(cmx$qtot,breaks=seq(0,100,5))
+plot.new()
+fam<-'Helvetica-Narrow' # names(pdfFonts())[order(sapply(names(pdfFonts()),function(x) strwidth(paste(LETTERS,collapse=''),family=x)))[1]]
+graphics.off()
+pdf('sticksnballs.pdf',h=7.5,w=10)
+j=2947
+par(mfrow=c(3,2),mar=rep(.9,4))
+g<-compo[[j]]
+E(g)$weight
+plot(edge.betweenness.community(g),g,main=paste(j,'edge.betweenness.community'))
+plot(fastgreedy.community(g),g,main=paste(j,'fastgreedy.community'))
+plot(label.propagation.community(g),g,main=paste(j,'label.propagation.community'))
+plot(multilevel.community(g),g,main=paste(j,'multilevel.community'))
+plot(optimal.community(g),g,main=paste(j,'optimal.community'))
+plot(spinglass.community(g,implementation='neg'),g,main=paste(j,'spinglass.community'))
+
+#plot(walktrap.community(g),g,main=paste(j,'walktrap.community'))
+par(mfrow=c(2,2),mar=c(5, 4, 4, 2) + 0.1)
+setkey(cmx,ix)
+ltot<-rep(0,length(mod))
+ltot[cmx$ix]<-cmx$qtot
+ins<-cmx[,list(ins=list(sample(ix,4))),keyby=qtot]
+for(i in rev(unlist(ins$ins))) {
+	wt<-E(compo[[i]])$weight
+	wt[wt<0]<-wt[wt<0]+1
+	wfr<-layout.fruchterman.reingold(compo[[i]],weights=wt)
+	plot.communities(
+		oc[[i]]
+		,compo[[i]]
+		,layout=wfr
+		,edge.color=sapply(lintran(wt,s2=c(.1,1)),function(x) gray(0,alpha=x))
+		,edge.label=as.character(round(wt,2))
+		,edge.label.cex=.75
+		,edge.label.family=fam
+		,edge.label.color=gray(0,alpha=.5)
+		,vertex.label.cex=.75
+		,vertex.label.family=fam
+		,main=paste(
+			'comp',i
+			,'qtot',ifelse(is.null(pbct[[i]]),'n/a',cmx[list(i),qtot])
+			,'\nmod',round(mod[i],3)
+		#	,'bct',ifelse(is.null(pbct[[i]]),'n/a',cmx[list(i),bct])
+		#	,'pbct',ifelse(is.null(pbct[[i]]),'n/a',round(cmx[list(i),pbct],4))
+			,'nv',ifelse(is.null(pbct[[i]]),'n/a',round(cmx[list(i),nv],4))
+			,'\nqmod',ifelse(is.null(pbct[[i]]),'n/a',cmx[list(i),qmod])
+		#	,'qbct',ifelse(is.null(pbct[[i]]),'n/a',cmx[list(i),qbct])
+		#	,'qpbct',ifelse(is.null(pbct[[i]]),'n/a',cmx[list(i),qpbct])
+			,'qnv',ifelse(is.null(pbct[[i]]),'n/a',cmx[list(i),qnv])
+		)
+	)
+}
+dev.off()
+par(mfrow=c(1,1),mar=c(5, 4, 4, 2) + 0.1)
 t10<-proc.time()
 round((t10-t9)/60,3)
+
+
+
+
+### moving forward, pick a qtot threshold and develop recode procedure
+
+fuzzy.sets<-sapply(oc,function(x) split(names(membership(x)),membership(x)))
+fuzzy.sets<-do.call(c,fuzzy.sets)
+Count<-sapply(fuzzy.sets,length)
+tfs<-data.frame(table(Count))
+tfs$Perc<-round(prop.table(tfs$Freq)*100,3)
+rownames(tfs)<-NULL
+print(tfs)
+fuzzy.sets[which.max(Count)]
+t11<-proc.time()
+round((t11-t10)/60,3)
+fuzzy.sets[Count==1]<-NULL
+names(fuzzy.sets)<-NULL
+save(fuzzy.sets,file='fuzzy-sets.RData')

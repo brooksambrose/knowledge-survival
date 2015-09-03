@@ -4,18 +4,26 @@ wok2db.f<-function(
 	,art_rev_only=T
 	,sample.batches=F
 	,sample.size=1000
+	,save=T
+	,verbose=T
+	,check.for.saved.output=F
 )
 {
+	if(check.for.saved.output) if(any(grepl('wok2db.RData',dir(recursive=T,full.names=T,ignore.case=T)))) {
+		warning('Loading and returning saved wok2db.RData.',call. = F)
+		load(dir(pattern='wok2db.RData',recursive=T,full.names=T,ignore.case=F)[1])
+		return(wok2db)
+	}
+
 	#NEWER WOK Database Import
 	require(data.table)
 
 	files<-list.files(dir,full.names=T,recursive=T)
 
-	wok2db<-list()
 	c<-0
 	n<-length(files)
 
-	cat("\n",n,"batches detected.",sep="")
+	cat("\n",n," batches detected.",sep="")
 
 	if(sample.batches) {
 		files<-sort(sample(x=files,size=sample.size))
@@ -24,49 +32,139 @@ wok2db.f<-function(
 
 	n<-length(files)
 
+	wok2db<-list()
 	for(i in files){
 		c<-c+1
-		flush.console()
-		cat("\r",round(c/n,3),i,sep=" ")
+		if(verbose) {flush.console();cat("\r",round(c/n,3),i,sep=" ")}
 		b<-readLines(i,warn=F)
-		fields<-sub("^(.{2}).+","\\1",b)
-		cut<-fields%in%c("FN","VR","","ER","EF")
+		field<-sub("^(.{2}).+","\\1",b)
+		cut<-field%in%c("FN","VR","","ER","EF")
 		b<-b[!cut]
-		fields<-fields[!cut]
-		t<-fields=="  "
+		field<-field[!cut]
+		t<-field=="  "
 		x<-which(t)
 		y<-which(!t)
 		if(any(t)) {
 			for(j in 1:length(x)) x[j]<-y[sum(y<x[j])]
-			fields[t]<-fields[x]
+			field[t]<-field[x]
 		}
 		b<-sub("^.. ?(.*)","\\1",b)
 		ind<-1:length(b)
-		t<-fields!="UT"
+		t<-field!="UT"
 		x<-which(t)
 		y<-which(!t)
 		ind[t]<-ind[y[sapply(lapply(lapply(as.list(x),"<",y),which),min)]]
-		d<-data.table(b.ind=b[ind],fields,b)
+		d<-data.table(b.ind=b[ind],field,b)
 		if(art_rev_only){
-			dt<-which(d$fields=="DT")
+			dt<-which(d$field=="DT")
 			dtt<-grepl("(Article)|(Review)",d$b[dt])
-			if(all(dtt)) next
+			if(!all(dtt)) {
 			dt<-d$b.ind[dt[dtt]]
 			setkey(d,b.ind)
 			d<-d[dt]
+			}
 		}
-		setkey(d,b.ind,fields)
-		wok2db[[i]]<-d
+		wok2db[[i]]<-copy(d)
 	}
 	wok2db<-rbindlist(wok2db)
-	if(anyDuplicated(wok2db)>0) wok2db<-unique(wok2db)
+	setkey(wok2db,b.ind,field)
+	dup<-duplicated(wok2db)
+	if(any(dup)){
+		ud<-unique(wok2db$b.ind[dup])
+		cat('\n\n',length(ud),' duplicate records detected and removed, e.g.:\n',sep='')
+		if(length(ud)>5) {cat(sample(ud,5),sep='\n')} else {cat(ud,sep='\n')}
+		wok2db<-unique(wok2db)
+	}
 	wok2db<-droplevels(wok2db)
 	setnames(wok2db,c("b.ind","b"),c("id","val"))
-	save(wok2db,file=paste(out,.Platform$file.sep,"wok2db.RData",sep=""))
+	if(save) save(wok2db,file=paste(out,.Platform$file.sep,"wok2db.RData",sep=""))
 	wok2db
 }
 
-if(F){
+jstor2db.f<-function(
+	dir=stop("Choose input directory containing DFR.JSTOR.ORG batches of zip archives.")
+	,out=stop("Specify output directory for your project.")
+	,sample.batches=T
+	,sample.size=1
+	,in.parallel=F # import batches in parallel
+	,drop.nchar1=T # drop ngrams of 1 character
+	,drop.freq1=T # drop ngrams that appear only once
+	,check.for.saved.output=F # will scan output directory for a 'jstor2db.RData' file, load it, and return it instead of running a new import
+)
+{
+
+	if(check.for.saved.output) if(any(grepl('jstor2db.RData',dir(recursive=T,full.names=T,ignore.case=T)))) {
+		warning('Loading and returning saved jstor2db.RData.',call.=F)
+		load(dir(pattern='jstor2db.RData',full.names=T,recursive=T,ignore.case=F)[1])
+		return(wok2db)
+	}
+
+	zips<-grep('\\.zip$',list.files(dir,full.names=T,recursive=T,include.dirs=T),value=T)
+	n<-length(zips)
+	if(sample.batches) {
+		zips<-sort(sample(x=zips,size=sample.size))
+		cat("\n",sample.size," or ",round(sample.size/n*100,3)," % of batches drawn at random.\n\n",sep="")
+	}
+
+	import.dfr.jstor.f<-function(zip){
+		require(tm)
+		require(SnowballC)
+		require(data.table)
+
+		temp <- tempdir()
+		unzip(zip,exdir=temp)
+		f<-list.files(temp,recursive=T,include.dirs=T,full.names=T)
+		dat<-try(data.table(read.table(grep('citations.tsv',f,value=T),header=F,skip=1,sep='\t',quote='',comment.char = "")))
+		if(class(dat)[1]=="try-error") return(dat)
+		dat[,ncol(dat):=NULL,with=F]
+		setnames(dat,as.character(read.table(grep('citations.tsv',f,value=T),header=F,nrows=1,sep='\t',quote='',as.is=T)))
+		dat[,id:=sub('/','_',id)]
+		setkey(dat,id)
+
+		bow.f<-function(x){
+			x<-data.table(read.csv(grep(x,f,value=T),as.is=T))
+			x<-x[!removeWords(x$WORDCOUNTS,stopwords('english'))=='']
+			x[,WORDCOUNTS:=tolower(WORDCOUNTS)]
+			x[,WORDCOUNTS:=removePunctuation(WORDCOUNTS)]
+			x[,WORDCOUNTS:=removeNumbers(WORDCOUNTS)]
+			x[,WORDCOUNTS:=stemDocument(WORDCOUNTS,language='english')]
+			x<-x[,list(WEIGHT=sum(WEIGHT)),by=WORDCOUNTS]
+			x<-x[,c(rep(WORDCOUNTS,WEIGHT))]
+			x<-table(x)
+			x
+		}
+
+		dat[,bow:=lapply(id,function(x) try(bow.f(x)))]
+		unlink(temp)
+		dat
+	}
+
+	if(in.parallel){
+		require(doParallel)
+		cl <- makeCluster(detectCores() )
+		registerDoParallel(cl, cores = detectCores() )
+		jstor2db <- foreach(i = zips,.packages = c('data.table','tm','SnowballC'),.inorder=F) %dopar% try(import.dfr.jstor.f(zip=i))
+		stopCluster(cl)
+	} else {jstor2db<-list();for(i in zips) jstor2db[[i]]<-try(import.dfr.jstor.f(zip=i))}
+
+jstor2db<-rbindlist(jstor2db[sapply(jstor2db,is.data.table)])
+
+	# condense vocab
+if(drop.nchar1) jstor2db[,bow:=list(lapply(bow,function(x) as.table(x[nchar(names(x))>1])))]
+if(drop.freq1) jstor2db[,bow:=list(lapply(bow,function(x) as.table(x[x>1])))]
+	vocab<-sort(unique(unlist(lapply(jstor2db$bow,function(x) names(x)))))
+jstor2db[,bow:=list(lapply(bow,function(x) {x<-matrix(c(which(vocab%in%names(x)),as.integer(x)),nrow=2);rownames(x)<-c('vocab.index','freq');x}))]
+
+	dfr.jour<-jstor2db[,.N,by=journaltitle]
+	print(dfr.jour)
+	attributes(jstor2db)$vocab<-vocab
+	save(jstor2db,file=paste(out,'jstor2db.RData',sep=.Platform$file.sep))
+	jstor2db
+}
+
+
+#Port fuzzy set functions to here
+if(F){if(F){
 cr2zcr.f<-function( #utility for resolving identity uncertainty for WOK CR field
 	cr=stop("cr = supply a character vector of unique and uncertain CR ids") #unprocessed bimodal edgelist in UT CR order
 	,just.normalize=T # TRUE will remove DOI and capitalize. FALSE will perform fuzzy set replacement.
@@ -76,7 +174,7 @@ require(stringdist)
 require(randomForest)
 load("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/wok2db.RData")
 if(!is.data.table(wok2db)) wok2db<-data.table(wok2db)
-setkey(wok2db,fields,id)
+setkey(wok2db,field,id)
 
 ### impose formatting and nomenclature ###
 rawbel<-wok2db["CR",c(1,3),with=F] #delete
@@ -166,6 +264,8 @@ bmnl.f<-function(jcr,jw.thresh=.1,jw.penalty=.1){ # records best match nodelist 
 
 return(rawbel)
 }
+
+if(F){
 t2<-proc.time()
 trg<-data.table(dl=sapply(hd,function(x) any(grepl(" ?((((17)|(18)|(19))[0-9]{2})|(((200)|(201))[0-9])),",labels(x))))) # has date (all true)
 trg[,vl:=sapply(hd,function(x) any(grepl(", V[0-9]",labels(x))))] #has volume
@@ -243,6 +343,7 @@ trg[sapply(osamp,function(x) length(x)>1),osampl1:=list(NA)]
 trg[,osampl1:=unlist(osampl1)]
 setkey(trg,osampl1)
 trg[,nsamp:=1:nrow(trg)]
+}
 
 if(F) {
 	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/sample.RData")
@@ -345,6 +446,7 @@ data.frame(lapply(cen,round,3))
 
 }
 
+if(F){
 #dl has date
 #vl has volume
 #pl has page
@@ -402,7 +504,7 @@ train<-train[,list(good,vl,pl,sl,dsd0,vsd0,psd0,dsd,vsd,psd,l,l2,f3l,mxv3,ncsd,b
 
 (less<-table(data.frame(vna=is.na(train$vsd)&!train$sl,pna=is.na(train$psd)&!train$sl)))
 round(prop.table(less)*100,2)
-
+}
 ### expanded sample
 if(F){
 nvnp<-list(trgl=(is.na(trg$vsd))&is.na(trg$psd)&!trg$sl,trainl=(is.na(train$vsd))&is.na(train$psd)&!train$sl)
@@ -430,7 +532,7 @@ if(F) save(whoops,file="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/19
 
 
 
-
+if(F){
 
 ######## oh dear
 bad<-read.table(file = "1900-2010FuzzySets/yvnp/whoops_bad.tab", sep = "\t", header = F, stringsAsFactors = FALSE)
@@ -594,7 +696,7 @@ mitrainog<-mi(mitrainog,n.imp=10,n.iter=100)
 
 library(SuperLearner)
 slfit<-SuperLearner(Y=as.numeric(trainog$good),X=,SL.library=c("SL.glm"),family=binomial(link="cloglog"),verbose=T)
-
+}
 
 if(F){
 terms<-list()
@@ -629,22 +731,17 @@ coef<-data.frame(do.call(rbind,coef))
 pkdens.coef<-apply(coef,2,function(x) {y<-density(x);y<-y$x[which.max(y$y)];y})
 den<-apply(coef,2,density)
 }
-
+}
 
 db2bel.f<-function(
 	wok2db
 	,out=stop("Specify output directory for your project.")
-	,height=2
-	,man_recode=F
-	,manual_audit=T
-	,periodicals=""
 	,saved_recode=NULL
-	,ls_or_ld="ls"
-	,recode_cores=1
+	,save_og4recode=F
 	,trim_doi=T
 	,capitalize=T
-	,cut_samp_def=10
-	,hclust=NULL
+	,trim_anon=T
+	,cut_samp_def=0 # if sample is based on a common citation set that should be removed for analysis
 	,trim_pendants=T
 )
 {
@@ -652,362 +749,233 @@ db2bel.f<-function(
 ### check function requirements ###
 require(data.table)
 out
-if(!any(ls_or_ld%in%c("ls","ld"))) stop("Specify Levenshtein similarity (\"ls\") or distance (\"ld\").")
 
 ### draw only citation edge information from wok2db ###
-db2bel<-list()
 wok2db<-data.table(wok2db)
-setkey(wok2db,fields)
-db2bel$bel<-data.frame(wok2db[J("CR")])[,c("id","val")]
+setkey(wok2db,field)
+db2bel<-wok2db["CR",list(id,val)]
 rm("wok2db")
 
 ### impose formatting and nomenclature ###
-db2bel$bel[[1]]<-as.character(db2bel$bel[[1]])
-db2bel$bel[[2]]<-as.character(db2bel$bel[[2]])
-rownames(db2bel$bel)<-NULL
-names(db2bel$bel)<-c("ut","cr")
-if(trim_doi) db2bel$bel$cr<-sub(", DOI .+","",db2bel$bel$cr) #remove DOI
-if(capitalize) db2bel$bel$cr<-gsub("(\\w)","\\U\\1",db2bel$bel$cr,perl=T) #capitalize
-db2bel$bel<-db2bel$bel[order(db2bel$bel$ut,db2bel$bel$cr),] #sort
+setnames(db2bel,c("ut","cr"))
+if(trim_doi) db2bel[,cr:=sub(", DOI .+","",cr)] #remove DOI
+if(capitalize) db2bel[,cr:=gsub("(\\w)","\\U\\1",cr,perl=T)] #capitalize
+if(trim_anon&capitalize) db2bel[,cr:=sub("^\\[ANONYMOUS\\], ","",cr)] #remove ANONYMOUS author
 
-tab<-table(db2bel$bel$cr)
+### recoding ###
+setkey(db2bel,cr)
+if(save_og4recode){ # save original codes to disk
+	cat('\nSaving normalized original CR codes to pass to fuzzy set routine.')
+	original.cr<-unique(dob2bel$cr)
+	save(original.cr,file=paste(out,.Platform$file.sep,'original-cr.RData',sep=""))
+}
+if(!is.null(saved_recode)){ # recode using fuzzy sets
+	lfs<-length(saved_recode)
+	cat('\nRecoding CR from',lfs,'sets.\n')
+	db2bel[,zcr:=cr]
+	for(i in 1:lfs) {
+		cat('\r',round(i/lfs*100,4),'%\t\t',sep='')
+		ix<-saved_recode[[i]]
+		recode<-db2bel[ix,list(cr)][,.N,by=cr]
+		recode<-recode$cr[recode$N==max(recode$N)]
+		recode<-tolower(recode[which.min(nchar(recode))])
+		db2bel[ix,zcr:=recode]
+	}
+	cat('\n')
+}
+### pendants ###
+if(trim_pendants){
+db2bel[,pend:=!duplicated(cr)|duplicated(cr,fromLast=T)]
+if(!is.null(saved_recode)) db2bel[,zpend:=!duplicated(zcr)|duplicated(zcr,fromLast=T)]
+}
+
+### cut sample ###
+crd<-db2bel[,list(cr)][,.N,by=cr]
+setkey(crd,N)
+if(!is.null(saved_recode)) {
+	setkey(db2bel,ut,zcr)
+	db2bel[,zdup:=duplicated(db2bel)]
+	zcrd<-db2bel[!db2bel$zdup,list(zcr)][,.N,by=zcr]
+	setkey(zcrd,N)
+	setkey(db2bel,cr)
+}
+
 if(cut_samp_def>0){
 	#cut highest degree citations, argument is the length of the list in descending order of frequency
 	cat("\nEnter -indices separated by spaces- to reject high degree citations such as those defining the sample, or -enter- to reject none.\n")
-	tab<-tab[order(tab,decreasing=T)]
-	drop<-names(tab[1:cut_samp_def])
-	print(cbind(index=1:cut_samp_def,freq=tab[1:cut_samp_def]))
+	cut<-crd[nrow(crd):(nrow(crd)-cut_samp_def),list(cr=cr,index=1:cut_samp_def,N=N)]
+	print(cut)
 	u<-readLines(n=1)
 	if(u!=""){
 		u<-unlist(strsplit(u," "))
 		u<-as.integer(u)
-		if(any(is.na(u))) {stop("\nTry again.")} else {db2bel$bel<-db2bel$bel[!db2bel$bel$cr%in%drop[u],];tab<-tab[!names(tab)%in%drop[u]]}
+		if(any(is.na(u))) {stop("\nTry again.")} else {db2bel<-db2bel[!list(cut[u]$cr)]}
 	}
 }
 
-db2bel<-list(bel=db2bel$bel);save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
+### results ###
+print(crd)
+cat('\n')
+if(!is.null(saved_recode)) print(zcrd)
+cat('\n')
 
-if(man_recode&is.null(saved_recode)){
-	compare<-function(v) all(sapply(as.list(v[-1]),FUN=function(z){identical(z,v[1])}))
-	require(stringdist)
-	db2bel[["sets"]]<-list()
-	cod<-sort(names(tab))
-	if(!"hoff2fuz.RData"%in%list.files(out)){
-		cat("\nCreating fuzzy citation sets requires string dissimilarity and clustering calculations that can take a long time. Do you want to continue on this machine?\n\t-any key- to continue.\n\t-n- to stop and export an executable Hoffman2 script.")
-		u<-readLines(n=1)
-		if(u=="n"){
-			save(cod,file=paste(out,.Platform$file.sep,"fuz2hoff_cod.RData",sep=""))
-			writeLines(c(
-				"library(RecordLinkage)"
-				,"require(fastcluster)"
-				,"gc()"
-				,"load(\"fuz2hoff_cod.RData\")"
-				,"length(cod)"
-				,"gc()"
-				,paste("ls_or_ld<-\"",ls_or_ld,"\"",sep="")
-				,"(t1<-proc.time())"
-				,"if(ls_or_ld==\"ls\") dis<-do.call(rbind,lapply(as.list(cod),levenshteinSim,cod))"
-				,"if(ls_or_ld==\"ld\") dis<-do.call(rbind,lapply(as.list(cod),levenshteinDist,cod))"
-				,"print(object.size(dis), units = \"auto\")"
-				,"dis<-as.dist(dis,diag=F,upper=F)"
-				,"print(object.size(dis), units = \"auto\")"
-				,"if(ls_or_ld==\"ls\") dis<-1-dis"
-				,"(t2<-proc.time())"
-				,"gc()"
-				,"h<-hclust(dis)"
-				,"(t3<-proc.time())"
-				,"t2-t1 #calc dissimilarity"
-				,"t3-t2 #calc complete clustering"
-				,"print(object.size(h), units = \"auto\")"
-				,"gc()"
-				,"rm(dis)"
-				,"hoff2fuz<-list(hclust=h,cod=cod)"
-				,"save(hoff2fuz,file=\"hoff2fuz.RData\")"
-				),con=file(paste(out,.Platform$file.sep,"fuz2hoff.R",sep="")))
-				stop(paste("Script and data ready for upload to cluster at",paste(out,.Platform$file.sep,"fuz2hoff.R",sep="")),call.=F)
-		}
-		require(fastcluster)
-		tt1<-proc.time()
-		if(ls_or_ld=="ls") dis<-stringdistmatrix(cod,cod,method='jw',p=0.1,ncores=recode_cores) # <-lapply(as.list(cod),levenshteinSim,cod)
-		if(ls_or_ld=="ld") dis<-stringdistmatrix(cod,cod,method='jw',p=0.1,ncores=recode_cores) # <-lapply(as.list(cod),levenshteinDist,cod)
-		#dis<-do.call(rbind,dis)
-		#if(ls_or_ld=="ls") dis<-1-dis
-		tt2<-proc.time()-tt1
-		cat("\nDistance matrix calculated in:\n")
-		print(tt2)
-		h<-hclust(as.dist(dis,diag=F,upper=F))
-		tt3<-proc.time()-tt2
-		cat("\nDistances clustered in:\n")
-		print(tt3)
-		hoff2fuz<-list(hclust=h,cod=cod)
-		save(hoff2fuz,file=paste(out,.Platform$file.sep,"hoff2fuz.RData",sep=""))
-	}
-	if("hoff2fuz.RData"%in%list.files(out)){
-		load(paste(out,.Platform$file.sep,"hoff2fuz.RData",sep=""))
-		h<-hoff2fuz$hclust
-		cod<-hoff2fuz$cod
-	}
-	#sets audit
-	ht<-unique(h$height)
-	st.ht<-0
-	ht<-ht[ht>=st.ht]
-	plot(h$height,type="l")
-	e<-NULL
-	c<-cutree(h,h=ht[1])
-	e<-split(1:length(cod),c)
-	e<-e[sapply(e,length)>1]
-	sets<-e
-	veto<-list()
-	u<-"start"
-	while(!all(u=="")){
-		if(!length(sets)) break
-		cat("\nInitialize sets:\n\tEnter -indices separated by spaces- to reject sets that are NOT equivalent, or\n\t-enter- to accept all.\n")
-		for(j in 1:length(sets)) cat(j,cod[sets[[j]]],sep="\n")
-		u<-readLines(n=1)
-		if(u=="") break
-		u<-unlist(strsplit(u," "))
-		u<-as.integer(u)
-		if(any(is.na(u))) {cat("\nTry again.")} else {veto<-c(veto,sets[u]);sets<-sets[-u]}
-	}
-	for(i in height:length(ht)){
-		cat("\n===================================================================================\nht[",i,"]\t",ht[i],sep="")
-		c<-cutree(h,h=ht[i])
-		e<-split(1:length(cod),c)
-		e<-e[sapply(e,length)>1]
-		e<-e[!e%in%veto]
-		grown<-setdiff(sets,e)
-		if(!!length(grown)) {cat("\nGrown in next cut:");for(j in setdiff(sets,e)) cat("",cod[j],sep="\n\t")}
-		e<-setdiff(e,sets) # means what is in e that is not in sets
-if(!manual_audit){
-	#Test if magazine/newspaper or journal w/o author. Different issues treated as different.
-	u<-NULL
-	if(!!length(e))	for(j in 1:length(e)) if(any(sapply(lapply(x=as.list(cod[e[[j]]]),as.list(periodicals),FUN=grepl),all))){
-		test1<-sub("^((18|19|20)[0-9]{2}),.+","\\1",cod[e[[j]]]) #year
-		if(all(test1==cod[e[[j]]])) {test1<-T} else {test1<-compare(test1)}
-		test2<-sub("^(18|19|20)[0-9]{2},.+ ((0[1-9]|1[12])([0-2][1-9]|3[12])).*","\\2",cod[e[[j]]]) #month and day: could calculate days apart...
-		if(all(test2==cod[e[[j]]])) {test2<-T} else {test2<-compare(test2)}
-		test3<-sub(".+ (JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC).*","\\1",cod[e[[j]]]) #month as issue
-		if(all(test3==cod[e[[j]]])) {test3<-T} else {test3<-compare(test3)}
-		test4<-sub(".+ (V[0-9]+).*","\\1",cod[e[[j]]]) #volume
-		if(all(test4==cod[e[[j]]])) {test4<-T} else {test4<-compare(test4)}
-		if(any(!c(test1,test2,test3,test4))) u<-c(u,j)
-	}
-	if(!is.null(u)){
-		cat("\nRejected b/c different issues of magazine, newspaper, or journal:")
-		for(j in e[u]) cat("",cod[j],sep="\n\t")
-		{veto<-c(veto,e[u]);e<-e[-u]}
-	}
-	#Test if starred material: collapsing all statistical series together will create unusually high degrees. diff page within same issue treated as same
-	u<-NULL
-	if(!!length(e))	for(j in 1:length(e)) if(all(grepl("^\\*",cod[e[[j]]]))){
-		test1<-sub(".*(((17)|(18)|(19)|(20))[0-9]{2}).*","\\1",cod[e[[j]]])
-		if(all(test1==cod[e[[j]]])) {test1<-NA} else {test1<-compare(test1)}
-		test2<-sub(".+ (V[0-9]+).*","\\1",cod[e[[j]]])
-		if(all(test2==cod[e[[j]]])) {test2<-T} else {test2<-compare(test2)}
-		test3<-sub(".+ (V[0-9]+).*","\\1",cod[e[[j]]])
-		if(all(test3==cod[e[[j]]])) {test3<-T} else {test3<-compare(test3)}
-		if(is.na(test1)) if(any(!c(test2,test3))) {u<-c(u,j);next} else {next}
-		if(!test1) u<-c(u,j)
-	}
-	if(!is.null(u)){
-		cat("\nRejected b/c different annual edition of starred material:")
-		for(j in e[u]) cat("",cod[j],sep="\n\t")
-		{veto<-c(veto,e[u]);e<-e[-u]}
-	}
-	#Test if year volume and page are different
-	u<-NULL
-	if(!!length(e))	for(j in 1:length(e)){
-		test1<-sub(".*(((17)|(18)|(19)|(20))[0-9]{2})[^$].*","\\1",cod[e[[j]]])
-		if(all(test1==cod[e[[j]]])) {next} else {test1<-compare(test1)}
-		test2<-sub(".*(V[0-9]+).*","\\1",cod[e[[j]]])
-		if(all(test2==cod[e[[j]]])) {next} else {test2<-compare(test2)}
-		test3<-sub(".*(P[0-9]+).*","\\1",cod[e[[j]]])
-		if(all(test3==cod[e[[j]]])) {next} else {test3<-compare(test3)}
-		if(all(!c(test1,test2,test3))) u<-c(u,j)
-	}
-	if(!is.null(u)){
-		cat("\nRejected b/c year, volume, and page are all different:")
-		for(j in e[u]) cat("",cod[j],sep="\n\t")
-		{veto<-c(veto,e[u]);e<-e[-u]}
-	}
-	#Test if name is different
-	u<-NULL
-	if(!!length(e))	for(j in 1:length(e)){
-		test1<-sub("^([A-Z ]+).+$","\\1",cod[e[[j]]])
-		test2<-NULL
-		for(k in 1:length(test1)) test2<-c(stringdistmatrix(test1[k],test1[-k],method='jw',p=0.1),test2)
-		if(max(test2)<=.5) u<-c(u,j) #conservative match, to preseve variations in the same name
-	}
-	if(!is.null(u)){
-		cat("\nRejected b/c authors don't match:")
-		for(j in e[u]) cat("",cod[j],sep="\n\t")
-		{veto<-c(veto,e[u]);e<-e[-u]}
-	}
-}
-	u<-"start"
-		while(!all(u=="")){
-			if(!length(e)) break
-			cat("\nNot in previous cut:\n\tEnter -indices separated by spaces- to reject sets that are NOT equivalent, or\n\t-enter- to accept all.\n\t-r- to reject all and continue.\n\t-x- to reject all and exit.\n\t-s- to show current choices.\n")
-			for(j in 1:length(e)) cat(j,cod[e[[j]]],sep="\n")
-			u<-readLines(n=1)
-			if(u==""){
-				if(!!length(grown)) for(j in 1:length(e)) sets<-sets[!sets%in%grown[sapply(lapply(grown,"%in%",e[[j]]),all)]]
-				abline(h=ht[i],col="green")
-				break
-			}
-			if(u%in%c("r","x")) break
-			if(u=="s") {
-				cat("\nEdit current list:\n\tEnter -indices separated by spaces- to reject sets that are NOT equivalent, or\n\t-enter- to accept all.\n")
-				for(j in 1:length(sets)) cat(j,cod[sets[[j]]],sep="\n")
-				u<-readLines(n=1)
-				u<-unlist(strsplit(u," "))
-				u<-as.integer(u)
-				if(any(is.na(u))) {cat("\nTry again.")} else {veto<-c(veto,sets[u]);sets<-sets[-u];abline(h=ht[i],col="red")}
-				u<-"s"
-				next
-			}
-			if(u!="s"){
-				u<-unlist(strsplit(u," "))
-				u<-as.integer(u)
-				if(any(is.na(u))) {cat("\nTry again.")} else {veto<-c(veto,e[u]);e<-e[-u];abline(h=ht[i],col="red")}
-			}
-		{db2bel[["sets"]]<-sets;save(sets,file=paste(out,.Platform$file.sep,"db2bel_sets.RData",sep=""))}
-		}
-		if(u=="x"){
-			#drop<-NULL
-			#for(i in 1:length(sets)) for(j in 1:length(sets)) if(all(sets[[i]]%in%sets[[j]])&i!=j) drop<-c(drop,i)
-			#sets<-sets[-drop]
-			while(!all(u=="")){
-			cat("\nFinalize sets:\n\tEnter -indices separated by spaces- to reject sets that are NOT equivalent, or\n\t-enter- to accept all.\n")
-			for(j in 1:length(sets)) cat(j,cod[sets[[j]]],sep="\n")
-			u<-readLines(n=1)
-			if(u=="") break
-			u<-unlist(strsplit(u," "))
-			u<-as.integer(u)
-			if(any(is.na(u))) {cat("\nTry again.")} else {veto<-c(veto,sets[u]);sets<-sets[-u]}
-			}
-			if(u=="") break
-		}
-		if(u!="r") {sets<-c(sets,e)} else {abline(h=ht[i],col="red")}
-	}
-	for(j in 1:length(sets)) sets[[j]]<-cod[sets[[j]]]
-	{db2bel[["sets"]]<-sets;save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""));save(sets,file=paste(out,.Platform$file.sep,"db2bel_sets.RData",sep=""))}
-}
-{oc<-sum(tab);cat("\n","Original total acts of reference: ",oc,sep="")}
-if(man_recode){
-	if(!is.null(saved_recode)) db2bel$sets<-saved_recode
-	db2bel$bel<-cbind(db2bel$bel,zcr=db2bel$bel[,2])
-	db2bel$bel$zcr<-as.character(db2bel$bel$zcr)
-	ub<-length(unique(db2bel$bel$cr))
-	pre<-sort(unlist(c(0:9,strsplit("! \" # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \\ ] ^ _ ` { | } ~"," "),letters,LETTERS)))[1]
-	for(i in 1:length(db2bel$sets)) db2bel$bel[db2bel$bel[,3]%in%db2bel$sets[[i]],3]<-paste(pre,"z",formatC(i,width=nchar(as.character(length(db2bel$sets))),format="d",flag="0"),sep="")
+setkey(crd,N)
+if(!is.null(saved_recode)) setkey(zcrd,N)
 
-	db2bel$undup<-!duplicated(db2bel$bel[,c("ut","zcr")])
-	ubu<-length(unique(db2bel$bel$cr[db2bel$undup]))
-	if(any(!db2bel$undup)) cat("\n",sum(!db2bel$undup)," within-record duplicates after fuzzy replacement.","\nActually unique: ",ubu," / ",ub," ; ",ub-ubu," or ",100-round(ubu/ub*100,digits=2),"% fewer.",sep="")
+res<-data.frame(case=c('Total acts of reference'
+	,'Unique citations'
+	,'Citations referenced once'
+	,'Total referenced twice or more'
+	,'  Unique referenced twice or more'
+	)
+,cr=c(crd[,sum(N)]
+	,nrow(crd)
+	,nrow(crd[list(1)])
+	,crd[!list(1),sum(N)]
+	,nrow(crd[!list(1)])
+ )
+)
+if(!is.null(saved_recode)){
+res$zcr<-c(zcrd[,sum(N)]
+	,nrow(zcrd)
+	,nrow(zcrd[list(1)])
+	,zcrd[!list(1),sum(N)]
+	,nrow(zcrd[!list(1)])
+)
+res$change<-res$zcr-res$cr
+res$perc.change<-round(res$zcr/res$cr*100,5)
+res$alt.change<-res$perc.change-100
+}
+print(res)
+mres<-data.frame(case=
+	c('Pendants as % of total references'
+	 ,'Pendants as % of unique citations')
+	,cr=round(c(res$cr[3]/res$cr[1],res$cr[3]/res$cr[2])*100,4)
 
-	save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
-	ua<-length(unique(db2bel$bel$zcr))
-	cat("\nUnique after fuzzy replacement: ",ua," / ",ubu,"; ",ubu-ua," fewer or ",100-round(ua/ubu*100,digits=3),"% nodes conserved.",sep="")
-}
-if(trim_pendants){
-	pb<-sum(tab==1)
-	tt<-sum(tab)
-	pend<-names(tab[tab==1])
-	db2bel$pend<-!db2bel$bel$cr%in%pend
-	if(man_recode){
-		tab<-table(db2bel$bel$zcr[db2bel$undup])
-		pa<-sum(tab==1)
-		pend<-names(tab[tab==1])
-		db2bel$zpend<-!db2bel$bel$zcr%in%pend
-	}
-	cat("\nNumber of pendants in original coding: ",pb," / ",oc," or ",round(1-(pb/oc),digits=3)*100,"% remaining after dropping pendants.",sep="")
-	if(trim_pendants&man_recode) cat("\nNumber of pendants remaining after fuzzy replacement: ",pa," / ",tt," or ",round((1-(pa/tt))*100,digits=2),"%; ",round((pb-pa)/tt,digits=3)*100,"% or ",pb-pa," fewer than original coding.",sep="")
-}
+)
+if(!is.null(saved_recode)) mres$zcr<-round(c(res$zcr[3]/res$zcr[1],res$zcr[3]/res$zcr[2])*100,4)
+print(mres)
+# db2bel[,`:=`(ut=factor(ut),cr=factor(cr))] # better to factor after selection is made
+# if(!is.null(saved_recode)) db2bel[,zcr:=factor(zcr)]
 save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
 db2bel
 }
 
+
 bel2mel.f<-function(
 	db2bel=NULL
-	,subset=NULL
+	,subset=NULL # a vector of UT
 	,type=c("utel","crel")
 	,out=stop("Specify output directory for your project.")
-	,mansets=NULL
 	,trim_pendants=T
-	,man_recode=F
 )
 {
-	cat("bel2mel.f aka Plagiat!","Written by Brooks Ambrose\n",sep="\n")
+	require(data.table)
+	if(ncol(db2bel)>2) stop('db2bel must be a bimodal edgelist as a two column data.table. Selection on pendants, etc. should be made prior to passing to bel2mel.f.')
 
-	#subset should be a vector of UT
+	setnames(db2bel,c('ut','cr'))
+	db2bel[,ut:=as.character(ut)]
+	db2bel[,cr:=as.character(cr)]
+
 	bel2mel<-list()
-	if(is.null(db2bel)&"db2bel.RData"%in%list.files(out)) load(paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
-	if(is.null(subset)) {subset<-rep(T,nrow(db2bel$bel))} else {subset<-db2bel$bel$ut%in%subset}
-	if(trim_pendants&man_recode) db2bel$bel<-db2bel$bel[db2bel$zpend&db2bel$undup&subset,c("ut","zcr")]
-	if(!trim_pendants&man_recode) db2bel$bel<-db2bel$bel[db2bel$undup&subset,c("ut","zcr")]
-	if(trim_pendants&!man_recode) db2bel$bel<-db2bel$bel[db2bel$pend&subset,c("ut","cr")]
-	if(!dim(db2bel$bel)[1]) return(NA)
-	if(max(table(db2bel$bel[,2]))==1) stop("All isolates")
-	if("crel"%in%type){
-		cat("\nsplitting crel...")
-		if(trim_pendants&man_recode) bel2mel$tpzcrel<-split(db2bel$bel$zcr,db2bel$bel$ut)
-		if(trim_pendants&!man_recode) bel2mel$tpcrel<-split(db2bel$bel$cr,db2bel$bel$ut)
-		if(!trim_pendants&man_recode) bel2mel$zcrel<-split(db2bel$bel$zcr,db2bel$bel$ut)
-		if(!trim_pendants&!man_recode) bel2mel$crel<-split(db2bel$bel$cr,db2bel$bel$ut)
-		cat("split.")
+
+	if('utel'%in%type){
+		setkey(db2bel,ut,cr)
+		utd<-db2bel[,.N,by=ut]
+		setkey(utd,N,ut)
+		utiso<-utd[list(1),ut]
+		bel2mel$utel<-db2bel[!list(utiso),list(cr=combn(cr,m=2,FUN=sort,simplify=F)),by=ut]
+		bel2mel$utel[,`:=`(cr1=sapply(cr,function(x) x[1]),cr2=sapply(cr,function(x) x[2]))]
+		bel2mel$utel[,cr:=NULL]
+		bel2mel$utel<-bel2mel$utel[,list(ew=.N,ut=list(ut)),keyby=c('cr1','cr2')]
 	}
-	if("utel"%in%type){
-		cat("\nsplitting utel...")
-		if(trim_pendants&man_recode) bel2mel$tpzutel<-split(db2bel$bel$ut,db2bel$bel$zcr)
-		if(trim_pendants&!man_recode) bel2mel$tputel<-split(db2bel$bel$ut,db2bel$bel$cr)
-		if(!trim_pendants&man_recode) bel2mel$zutel<-split(db2bel$bel$ut,db2bel$bel$zcr)
-		if(!trim_pendants&!man_recode) bel2mel$utel<-split(db2bel$bel$ut,db2bel$bel$cr)
-		cat("split.")
+	if('crel'%in%type){
+		setkey(db2bel,cr,ut)
+		crd<-db2bel[,.N,by=cr]
+		setkey(crd,N,cr)
+		criso<-crd[list(1),cr]
+		bel2mel$crel<-db2bel[!list(criso),list(ut=combn(ut,m=2,FUN=sort,simplify=F)),by=cr]
+		bel2mel$crel[,`:=`(ut1=sapply(ut,function(x) x[1]),ut2=sapply(ut,function(x) x[2]))]
+		bel2mel$crel[,ut:=NULL]
+		bel2mel$crel<-bel2mel$crel[,list(ew=.N,cr=list(cr)),keyby=c('ut1','ut2')]
 	}
-	m<-names(bel2mel)
-	for(i in m){
-		cat("\nbuilding",i,"\b...")
-		for(j in 1:length(bel2mel[[i]])){
-			bel2mel[[i]][[j]]<-unique(t(apply(do.call(rbind,lapply(bel2mel[[i]][[j]],cbind,bel2mel[[i]][[j]])),1,sort)))
-			if(length(bel2mel[[i]][[j]])>2) bel2mel[[i]][[j]]<-matrix(bel2mel[[i]][[j]][bel2mel[[i]][[j]][,1]!=bel2mel[[i]][[j]][,2],],ncol=2)
-			bel2mel[[i]][[j]]<-suppressWarnings(cbind(bel2mel[[i]][[j]],names(bel2mel[[i]][j])))
+	save(bel2mel,file='bel2mel.RData')
+	bel2mel
+}
+
+mel2cfinder.f<-function(
+)
+{
+}
+
+cfinder2all.f<-function(
+	cf.in=stop('cf.out.dir = Path to CFinder output.')
+	,which=c('communities_links'
+					 ,'communities'
+					 ,'communities_cliques'
+					 ,'degree_distribution'
+					 ,'graph_of_communities'
+					 ,'membership_distribution'
+					 ,'overlap_distribution'
+					 ,'size_distribution')
+)
+{
+	require(data.table)
+	fileps<-list.files(cf.in,recursive=T,full.names=T)
+	ret<-list()
+	for(i in which){
+		if(c('communities_links')%in%i){
+			cat('compiling',i,'\n')
+
+			makerocketgonow<-function(raw){
+				raw<-readLines(raw)
+				raw<-strsplit(raw[grep('^[0-9][^:]+$',raw)],' ')
+				raw<-data.table(do.call(rbind,lapply(raw,function(x) sort(as.integer(x)))))
+				setnames(raw,c('src','tgt'))
+				raw<-unique(raw)
+				raw
+			}
+
+			require(doParallel)
+			cl <- makeCluster(detectCores() )
+			registerDoParallel(cl, cores = detectCores() )
+
+			ret[[i]] <- foreach(j = grep(paste('.+',.Platform$file.sep,i,'$',sep=''),fileps,value=T),.packages = c("data.table"),.inorder=F) %dopar% {
+				makerocketgonow(raw=j)
+			}
+
+			stopCluster(cl)
+
+			ret[[i]]<-rbindlist(ret[[i]])[,list(ew=.N),by=c('src','tgt')]
+			setkey(ret[[i]],ew)
 		}
-		bel2mel[[i]]<-do.call(rbind,bel2mel[[i]])
-		if(!dim(bel2mel[[i]])[1]) {bel2mel[[i]]<-NA;next}
-		bel2mel[[i]]<-data.frame(bel2mel[[i]])
-		bel2mel[[i]]<-bel2mel[[i]][order(bel2mel[[i]][,1],bel2mel[[i]][,2],bel2mel[[i]][,3]),]
-		l<-levels(bel2mel[[i]][,3])
-		bel2mel[[i]]<-aggregate(bel2mel[[i]][,3],by=list(bel2mel[[i]][,1],bel2mel[[i]][,2]),FUN=c,simplify=F)
-		bel2mel[[i]]$ew<-sapply(bel2mel[[i]][,3],length)
-		for(j in 1:dim(bel2mel[[i]])[1]) bel2mel[[i]][[j,3]]<-l[bel2mel[[i]][[j,3]]]
-		bel2mel[[i]]<-bel2mel[[i]][order(bel2mel[[i]][,1],bel2mel[[i]][,2]),]
-		cat("built.")
+		if(c('communities')%in%i){
+			cat('compiling',i,'\n')
+
+			makerocketgonow<-function(raw){
+				stub<-sub('^.+k=([0-9]+).+$','k\\1',raw)
+				raw<-readLines(raw)
+				raw<-strsplit(grep('^[0-9]',raw,value=T),':? ')
+				nams<-sapply(raw,function(x) x[1])
+				raw<-lapply(raw,function(x) as.integer(x[-1]))
+				names(raw)<-paste(stub,nams,sep='-')
+				raw
+			}
+
+			require(doParallel)
+			cl <- makeCluster(detectCores() )
+			registerDoParallel(cl, cores = detectCores() )
+
+			ret[[i]] <- foreach(j = grep(paste('.+',.Platform$file.sep,i,'$',sep=''),fileps,value=T),.packages = c("data.table"),.inorder=F) %dopar% {
+				makerocketgonow(raw=j)
+			}
+
+			stopCluster(cl)
+
+			names(ret[[i]])<-sapply(ret[[i]],function(x) sub('^([^-]+).+$','\\1',names(x[1])))
+		}
 	}
-if(F) if(trim_pendants) for(i in m[!is.na(bel2mel[m])]){
-	tab<-table(unlist(bel2mel[[i]][,1:2]))
-	cat("\nPendant ties dropped from subset of db2bel:",sum(tab==1))
-	tab<-names(tab[tab==1])
-	bel2mel[[i]]<-bel2mel[[i]][!(bel2mel[[i]][,1]%in%tab|bel2mel[[i]][,2]%in%tab),]
-	if(!dim(bel2mel[[i]])[1]) bel2mel[[i]]<-NA
-}
-if(all(is.na(bel2mel[m]))) return("ø")
-cat("\n\n")
-for(i in m[!is.na(bel2mel[m])]){
-	edist<-table(bel2mel[[i]]$ew)
-	n<-length(unique(unlist(bel2mel[[i]][,1:2])))
-	z<-(n*(n-1)/2)-sum(edist)
-	n<-names(edist)
-	edist<-c(z,edist)
-	names(edist)<-c("0",n)
-	edist<-as.table(edist)
-	cat("\n",i,sep="")
-	attributes(bel2mel[[i]])$count<-cbind(Freq=edist,Per=round(edist/sum(edist),digits=4)*100)
-	print(attributes(bel2mel[[i]])$count)
-	cat("Tot:",sum(edist),"\n\n")
-}
-save(bel2mel,file=paste(out,.Platform$file.sep,"bel2mel.RData",sep=""))
-bel2mel
+ret
 }
 
 perm.pois.f<-function(
@@ -1504,23 +1472,23 @@ subnet<-function(
 dbl2w.f<-function(
 	wok2db
 	,out=stop("Specify output directory")
-	,fields=stop("fields=c(\"field1\",\"field2\",...)")
+	,field=stop("field=c(\"field1\",\"field2\",...)")
 	,variations=NULL
 	,recode=NULL
 )
 {
 require(data.table)
 wok2db<-data.table(wok2db)
-setnames(wok2db,c("ut","fields","b"))
-setkey(wok2db,fields)
-wok2db<-wok2db[fields]
-setkey(wok2db,fields)
+setnames(wok2db,c("ut","field","b"))
+setkey(wok2db,field)
+wok2db<-wok2db[field]
+setkey(wok2db,field)
 
-fields<-tolower(fields)
-fields<-fields[fields!="ut"]
+field<-tolower(field)
+field<-field[field!="ut"]
 
 l<-list()
-for(i in fields){
+for(i in field){
 	l[[i]]<-wok2db[i=toupper(i)][j=list(ut,b)];setkey(l[[i]],ut);setnames(l[[i]],2,i)
 	if(i%in%c("cr","af")) l[[i]][,i:=factor(toupper(sub(", DOI .+","",l[[i]][[i]]))),with=F]
 	if(i=="af") l[[i]]<-l[[i]][i=!grepl("ANONYMOUS",l[[i]][[i]])]
@@ -1545,7 +1513,7 @@ else
 	for(i in tolower(names(recode))) for(j in names(recode[[i]]))  levels(l[[i]][[i]])[levels(l[[i]][[i]])%in%recode[[i]][[j]]]<-j
 }
 
-if("cr"%in%fields) {
+if("cr"%in%field) {
 	npen<-l$cr[,.N,by="cr"]
 	npen<-as.character(npen$cr[npen$N>1])
 	l$nr<-l$cr[,.N,by="ut"]
@@ -1556,7 +1524,7 @@ if("cr"%in%fields) {
 	setkey(l$cr,"ut")
 }
 
-if("so"%in%fields) {
+if("so"%in%field) {
 	### improve later for custom coding of natural text
 	rc<-data.frame(c=c("soci","[ck]ono","anth","poli"),r=c("Sociology","Economics","Anthropology","Political Science"))
 	l$ds<-copy(l$so)
@@ -1571,7 +1539,7 @@ for(i in names(l)[-1]) dbl2w<-merge(dbl2w,l[[i]],all=T,allow.cartesian=TRUE)
 rm(l)
 
 ### code selection effect
-if("cr"%in%fields) {
+if("cr"%in%field) {
 	dbl2w[is.na(dbl2w$nr),nr:=0]
 	dbl2w[is.na(dbl2w$nrtp),nrtp:=0]
 	dbl2w[,sel:=as.integer(nrtp>0)]
@@ -1579,7 +1547,7 @@ if("cr"%in%fields) {
 	dbl2w[,rej2:=as.integer(nrtp==0&nr!=0)] #document rejected if no citations after selection
 }
 
-w<-unique(c("ut",fields[fields%in%c("af","cr")]))
+w<-unique(c("ut",field[field%in%c("af","cr")]))
 lvs<-lapply(as.list(1:length(w)),FUN=function(x) apply(combn(w,x),2,paste,sep=""))
 lvs[[1]]<-matrix(lvs[[1]],ncol=length(w))
 for(i in 1:length(lvs)) for(j in 1:ncol(lvs[[i]])) {
@@ -2063,7 +2031,11 @@ write.ergmm<-function(
 	),con=paste(where,.Platform$file.sep,"write.ergmm_",sub(".RData","",dat),"_",mod,".R",sep=""))
 }
 
-cull.f<-function(a,b,cull=.2,noanon=F) {
+cull.f<-function(
+	a
+	,b,cull=.2
+	,noanon=F)
+{
 	if(any(is.na(b))) {b<-na.omit(b);attributes(b)<-NULL}
 	if(noanon) {
 		if(grepl("\\[ANONYMOUS\\],? ?",a)) stop("k = \"",a,"\"\n",call.=F)
@@ -2074,7 +2046,10 @@ cull.f<-function(a,b,cull=.2,noanon=F) {
 	b
 }
 
-unicr<-function(index){
+unicr<-function(
+	index
+)
+{
 	yu<-list()
 	cbeg<-list()
 	cend<-list()
@@ -2091,7 +2066,8 @@ unicr<-function(index){
 	u
 }
 
-poisson_permute<-function(){
+poisson_permute<-function()
+{
 	#permute the feckin distribution
 	perm<-list()
 	maxcombo<-1216*1215/2
@@ -2169,7 +2145,11 @@ poisson_permute<-function(){
 	apply(matrix(edist,nrow=dim(permdb)[1],ncol=dim(permdb)[2],byrow=T)-permdb,2,sd)
 }
 
-extract.components<-function(graph,quantile=0){
+extract.components<-function(
+	graph
+	,quantile=0
+)
+{
 	components<-component.dist(graph)
 	subgraphs<-list()
 	j<-1
@@ -2182,3 +2162,34 @@ extract.components<-function(graph,quantile=0){
 	return(subgraphs)
 }
 
+
+igraph2statnet<-function(
+	net
+)
+{
+	require(igraph)
+	require(network)
+	require(data.table)
+
+	if(class(net)=='igraph'){
+		el<-data.table(get.edgelist(net))
+		dir<-!igraph::is.directed(net)
+		if(dir){
+			w<-el[,V1>V2]
+			r<-el[w,V1]
+			el[w,V1:=V2]
+			el[w,V2:=r]
+		}
+		setkey(el,V1,V2)
+		bf<-nrow(el)
+		el<-unique(el)
+		cat('\n',bf-nrow(el),'duplicate edges deleted\n')
+		el<-as.matrix(el)
+		net<-network::network(el,matrix.type="edgelist",directed=ifelse(dir,T,F))
+	}
+
+	if(class(net)=='network'){
+
+	}
+	net
+}

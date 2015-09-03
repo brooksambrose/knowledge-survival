@@ -1,3 +1,4 @@
+cat('\014') # clear console
 #############################
 ############ TOC ############
 #############################
@@ -13,44 +14,187 @@
 ###############################
 
 rm(list=ls()) #clear memory
-cat('\014') # clear console
-setwd('~/Dropbox/GitHub/knowledge-survival') # work in Git rep
+setwd('~/Dropbox/GitHub/knowledge-survival') # work in Git repo
 source('dissertation_source.R') # load source
+rm(list=ls()[!ls()%in%c(
+'wok2db.f'
+,'wok2db'
+,'db2bel.f'
+,'db2bel'
+,'fuzzy.sets'
+,'bel2mel.f'
+,'bel2mel'
+,'.ls.objects'
+,'lsos'
+)]) # functions we're using so far
 tc<-1 # a counter for which table we are working on
 fc<-1 # a counter for which figure we are working on
+library(data.table)
 
 ###################################
 ############ SECTION 1 ############
 ###################################
 
 ############ 1.1 load database ############
-wok2db<-wok2db.f(
+if(F){wok2db<-wok2db.f(
 	dir='in'
 	,out='out'
-	,sample.batches=T
+	,sample.batches=F
 	,sample.size=100
+	,save=F
 )
+save(wok2db,file='wok2db.RData')
+}
 
-############ 1.2 extract bimodal edge list ############
-db2bel<-db2bel.f(
+## 1.1.1 Export list of journals
+library(stringdist)
+library(igraph)
+library(data.table)
+load('wok2db.RData')
+setkey(wok2db,field,id,val)
+wok<-wok2db[list('SO'),.N,by=val]$val
+#wok<-do.call(c,strsplit(wok,'-'))
+rm(wok2db)
+jstoro<-read.delim('/Users/bambrose/Dropbox/2013-2014/forLynne/WOKsamp.txt')
+match<-data.frame(abbr=NA,jstor=jstoro$jstor[amatch(tolower(wok),tolower(jstoro$ssci))],wok=wok)
+match<-match[order(match$wok,match$jstor),]
+if(F) write.table(match,file='supplemental/1.1.1 JSTOR-WOK/JSTOR-samp-abbr.tab',quote=F,row.names=F,na='',sep='\t')
+match<-read.table('supplemental/1.1.1 JSTOR-WOK/JSTOR-samp-abbr.tab',sep='\t',header=T)
+match$abbr<-sub('^.+=','',match$abbr)
+
+#these can be pasted into a browser and data requests can be made manually to dfr.jstor.org
+cat(c('',paste('http://dfr.jstor.org/fsearch/submitrequest?cs=jcode%3A',match$abbr[match$abbr!=''],'&cc=ty%3Afla',sep=''),'\n',sep=''),sep='\n')
+
+#these links will download csvs of annual record counts for each journal
+lapply(
+	c('fla','brv')
+	,function(x) cat(
+		paste('http://dfr.jstor.org/fsearch/csv?cs=jcode%3A',as.character(match$abbr[match$abbr!='']),'%5E1.0%7Cty%3A',x,'%5E1.0&fs=rtm1%3Ayrm1%3Atym1%3Asnm1&view=text&&csv=yr&fmt=csv',sep='')
+		,sep='\n'))
+
+"http://dfr.jstor.org/fsearch/csv?cs=jcode%3Aamerjarch%5E1.0%7Cty%3Abrv%5E1.0&fs=rtm1%3Ayrm1%3Atym1%3Asnm1&view=text&&csv=yr&fmt=csv"
+
+"http://dfr.jstor.org/fsearch/csv?cs=jcode%3Aamerjarch%5E1.0%7Cty%3Abrv%5E1.0&fs=rtm1%3Ayrm1%3Atym1%3Asnm1&view=text&&csv=yr&fmt=csv"
+
+#tabulate data sources across web of knowledge and jstor
+match<-data.table(match)
+setkey(match,wok)
+setkey(wok2db,field,val)
+wok.so<-wok2db['SO',.N,by=val]
+setnames(wok.so,'val','wok')
+wok.so[match]
+
+rm(list=ls())
+gc()
+cat('\014')
+t0<-proc.time()
+# after downloading
+
+#go to dissertation_source and look for jstor2db.
+match<-read.table('supplemental/1.1.1 JSTOR-WOK/JSTOR-samp-abbr.tab',sep='\t',header=T)
+missing<-match$jstor[!match$jstor%in%dfr.jour$journaltitle]
+(missing<-as.character(missing[missing!='']))
+
+#venn diagram for comparing jstor and wok samples
+require(venneuler)
+v <- venneuler(c(A=450, B=1800, "A&B"=230))
+plot(v)
+
+# just to 1920
+ret[,y:=as.integer(substr(pubdate,1,4))]
+setkey(ret,y)
+ret00.41<-ret[list(1900:1941)]
+rm(ret)
+save(ret00.41,file='ret00.41.RData')
+# topic model
+require(stm)
+vocab<-table(unlist(ret$bow))
+vocab<-sort(unique(unlist(docs))) # stm expects as input a list of matrices where each element of the list is a document and where the first row of each matrix is the index of a word and the second row is the count of the word. This is a more memory efficient form since zeros are not stored.
+stm.docs<-list()
+for(i in names(docs)){
+	t<-table(docs[[i]])
+	stm.docs[[i]]<-rbind(vocab.index=which(vocab%in%names(t)),frequency=t)
+}
+
+pre2stm<-list()
+pre2stm$model<-stm(documents=stm.docs,vocab=vocab,K=k,control=list(alpha=alpha))
+pre2stm$top.word.phi.beta<-sapply(data.frame(pre2stm$model$beta$logbeta),function(x) sapply(x,function(y) ifelse(is.infinite(y),.Machine$double.eps,exp(y)))) # called beta by stm, epsilon closest thing to zero the machine can represent, necessary to prevent error
+colnames(pre2stm$top.word.phi.beta)<-pre2stm$model$vocab
+pre2stm$doc.top.theta<-pre2stm$model$theta
+rownames(pre2stm$doc.top.theta)<-names(docs)
+pre2stm$doc.length<-sapply(docs,length)
+pre2stm$vocab<-pre2stm$model$vocab
+tn<-table(unlist(docs))
+pre2stm$term.frequency<-as.integer(tn)
+names(pre2stm$term.frequency)<-names(tn)
+
+save(pre2stm,file=sub(paste(rep(.Platform$file.sep,2),collapse=""),.Platform$file.sep,paste(out.dir,paste("stm-model-k",k,"-alpha",round(alpha,3),".RData",sep=""),sep=.Platform$file.sep)))
+
+
+if(F){
+	jstor<-as.character(read.csv('supplemental/1.1.1 JSTOR-WOK/JSTOR-all-journals.csv',skip=2)$Journal)
+	jstor<-do.call(c,strsplit(jstor,' / '))
+		jstor[jstor$ssci!='',]
+	jnet<-stringdistmatrix(tolower(c(wok,jstor)),tolower(c(wok,jstor)),useNames=T,method='jw',p=.1)
+	jnet[1:length(wok),1:length(wok)]<-1
+	match<-data.frame(wok,jstor=apply(jnet[1:length(wok),],1,function(x) jstor[which.min(x)-length(wok)]))
+	rownames(match)<-NUL
+	# jnet<-jnet/max(jnet)
+	# jnet<-graph.adjacency(jnet,mode='upper',weighted=T,diag=F)
+	# jcom<-spinglass.community(jnet,spins=300)
+	# (jcom<-split(names(membership(jcom)),membership(jcom)))
+}
+
+
+############ 1.2 resolve identity uncertainty for citations ############
+
+## 1.2.1 Greedy string comparison (already performed via hoffman)
+
+## 1.2.2 pairwise comparisons within greedy sets
+
+## 1.2.3 community detection to cluster pairwise comparisons
+
+
+############ 1.3 compile bimodal edge list ############
+
+## 1.3.1 pre-process edge list
+
+if(F){
+load('wok2db.RData')
+setkey(wok2db,id)
+system.time(db2bel<-db2bel.f(
 	wok2db=wok2db
 	,out='out'
-	,man_recode=F
-	,saved_recode=NULL
-)
+	,saved_recode=fuzzy.sets
+))
+}
 
-############ 1.3 resolve identity uncertainty for citations ############
+## 1.2.4 recode original, statistics on the difference it made
+if(F){
+	load('fuzzy-sets.RData')
+	lsos()
+	setkey(wok2db,field)
+	years<-as.data.frame(wok2db['PY',list(val)][,.N,keyby=val])
+	years$perc<-round(prop.table(years$N)*100,2)
+	print(years)
 
-## 1.3.1 Greedy string comparison (already performed via hoffman)
+	setkey(wok2db,field)
+	db2cr<-wok2db['CR',list(id,val)]
+}
 
-## 1.3.2 pairwise comparisons within greedy sets
 
 ############ 1.4 convert to two unimodal edge lists ############
+load('db2bel.RData')
+lsos()
+db2bel<-db2bel[which(!(zpend|zdup)),list(ut,zcr)] # use only recoded non-pendant
+lsos()
+db2bel[,`:=`(ut=droplevels(ut),zcr=droplevels(zcr))]
+lsos()
 
-bel2mel<-bel2mel.f(
+system.time(bel2mel<-bel2mel.f(
 	db2bel=db2bel
 	,out='out'
-)
+))
 
 
 
@@ -429,30 +573,30 @@ for(i in 1:length(cr)) cr[[i]]<-which(hkl$mlev%in%cr[[i]]) #convert CRs to CFind
 
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData')
 rownames(wok2db_41)<-NULL
-py<-droplevels(wok2db_41[wok2db_41$fields=='PY',-2])
+py<-droplevels(wok2db_41[wok2db_41$field=='PY',-2])
 colnames(py)<-c('ut','py')
-dt<-droplevels(wok2db_41[wok2db_41$fields=='DT',-2])
+dt<-droplevels(wok2db_41[wok2db_41$field=='DT',-2])
 colnames(dt)<-c('ut','dt')
-au<-droplevels(wok2db_41[wok2db_41$fields=='AU',-2])
+au<-droplevels(wok2db_41[wok2db_41$field=='AU',-2])
 colnames(au)<-c('ut','au')
 au<-cbind(ut=as.character(sort(unique(au$ut))),au=split(as.character(au$au),f=au$ut,drop=T))
-af<-droplevels(wok2db_41[wok2db_41$fields=='AF',-2])
+af<-droplevels(wok2db_41[wok2db_41$field=='AF',-2])
 colnames(af)<-c('ut','af')
 af<-cbind(ut=as.character(sort(unique(af$ut))),af=split(as.character(af$af),f=af$ut,drop=T))
-pu<-droplevels(wok2db_41[wok2db_41$fields=='PU',-2])
+pu<-droplevels(wok2db_41[wok2db_41$field=='PU',-2])
 colnames(pu)<-c('ut','pu')
-so<-droplevels(wok2db_41[wok2db_41$fields=='SO',-2])
+so<-droplevels(wok2db_41[wok2db_41$field=='SO',-2])
 colnames(so)<-c('ut','so')
-sc<-droplevels(wok2db_41[wok2db_41$fields=='SC',-2])
+sc<-droplevels(wok2db_41[wok2db_41$field=='SC',-2])
 colnames(sc)<-c('ut','sc')
-wc<-droplevels(wok2db_41[wok2db_41$fields=='WC',-2])
+wc<-droplevels(wok2db_41[wok2db_41$field=='WC',-2])
 colnames(wc)<-c('ut','wc')
 wc<-cbind(ut=as.character(sort(unique(wc$ut))),wc=split(as.character(wc$wc),f=wc$ut,drop=T))
-nr<-droplevels(wok2db_41[wok2db_41$fields=='NR',-2])
+nr<-droplevels(wok2db_41[wok2db_41$field=='NR',-2])
 colnames(nr)<-c('ut','nr')
-tc<-droplevels(wok2db_41[wok2db_41$fields=='TC',-2])
+tc<-droplevels(wok2db_41[wok2db_41$field=='TC',-2])
 colnames(tc)<-c('ut','tc')
-pg<-droplevels(wok2db_41[wok2db_41$fields=='PG',-2])
+pg<-droplevels(wok2db_41[wok2db_41$field=='PG',-2])
 colnames(pg)<-c('ut','pg')
 
 db<-merge(py,dt,all=T)
@@ -607,8 +751,8 @@ write.table(d
 )
 
 ############ DESCRIPTIVES ############
-
 ##### Illustrate network projections that are small versions of my distribution
+
 if(F){
 rm(list=ls())
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData')
@@ -702,22 +846,22 @@ rm(list=ls())
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData')
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData')
 
-wok2db_41<-wok2db_41[wok2db_41$fields%in%c('PY','PU','SO','DT','PG','AU','AF'),]
-colnames(wok2db_41)<-c('ut','fields','b')
+wok2db_41<-wok2db_41[wok2db_41$field%in%c('PY','PU','SO','DT','PG','AU','AF'),]
+colnames(wok2db_41)<-c('ut','field','b')
 rownames(wok2db_41)<-NULL
-q<-droplevels(wok2db_41[wok2db_41$fields=='AU',c('ut','b')])
+q<-droplevels(wok2db_41[wok2db_41$field=='AU',c('ut','b')])
 colnames(q)[2]<-'au'
-r<-droplevels(wok2db_41[wok2db_41$fields=='AF',c('ut','b')])
+r<-droplevels(wok2db_41[wok2db_41$field=='AF',c('ut','b')])
 colnames(r)[2]<-'af'
-s<-droplevels(wok2db_41[wok2db_41$fields=='PG',c('ut','b')])
+s<-droplevels(wok2db_41[wok2db_41$field=='PG',c('ut','b')])
 colnames(s)[2]<-'pg'
-t<-droplevels(wok2db_41[wok2db_41$fields=='DT',c('ut','b')])
+t<-droplevels(wok2db_41[wok2db_41$field=='DT',c('ut','b')])
 colnames(t)[2]<-'dt'
-u<-droplevels(wok2db_41[wok2db_41$fields=='PY',c('ut','b')])
+u<-droplevels(wok2db_41[wok2db_41$field=='PY',c('ut','b')])
 colnames(u)[2]<-'py'
-v<-droplevels(wok2db_41[wok2db_41$fields=='PU',c('ut','b')])
+v<-droplevels(wok2db_41[wok2db_41$field=='PU',c('ut','b')])
 colnames(v)[2]<-'pu'
-w<-droplevels(wok2db_41[wok2db_41$fields=='SO',c('ut','b')])
+w<-droplevels(wok2db_41[wok2db_41$field=='SO',c('ut','b')])
 colnames(w)[2]<-'so'
 x<-droplevels(aggregate(db2bel$bel$cr,db2bel$bel['ut'],length))
 colnames(x)<-c('ut','nr')
@@ -923,7 +1067,7 @@ write.table(soup2[[i]]
 
 #weights for journals under multiple publishers
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/db2bel_41.RData')
-zzz<-droplevels(wok2db_41[wok2db_41$fields=='CR',c('ut','b')])
+zzz<-droplevels(wok2db_41[wok2db_41$field=='CR',c('ut','b')])
 colnames(zzz)[2]<-'cr'
 
 zzz<-merge(z,zz)
@@ -1022,7 +1166,7 @@ for(i in c('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/2015out/wok2db
 	load(i)
 	cr<-get(grep('wok2db',ls(),value=T))
 	rm(list=ls()[!ls()%in%c('i','cr')])
-	cr<-levels(droplevels(cr$b[cr$fields=='CR']))
+	cr<-levels(droplevels(cr$b[cr$field=='CR']))
 	cr<-toupper(cr)
 	cr<-sub(', DOI .+','',cr)
 	save(cr,file=paste(sub('^(.+/).+','\\1',i),sub('^.+db_([^.]+).+$','cr\\1',i),'.RData',sep=''))
@@ -1238,10 +1382,10 @@ save(bigpor,file='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/hoffstri
 if(F){
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData')
 
-wok2db_41<-wok2db_41[wok2db_41$fields%in%c('AF'),]
-colnames(wok2db_41)<-c('ut','fields','b')
+wok2db_41<-wok2db_41[wok2db_41$field%in%c('AF'),]
+colnames(wok2db_41)<-c('ut','field','b')
 rownames(wok2db_41)<-NULL
-r<-droplevels(wok2db_41[wok2db_41$fields=='AF',c('ut','b')])
+r<-droplevels(wok2db_41[wok2db_41$field=='AF',c('ut','b')])
 colnames(r)[2]<-'af'
 rm(wok2db_41)
 
@@ -1350,7 +1494,7 @@ library(network)
 
 uth<-5 #set upper threshold for summary table
 ddt<-list()
-ddt$bmut<-c('0'=sum(wok2db_41$b[wok2db_41$fields=='NR']=='0'),table(table(db2bel$bel$ut)))
+ddt$bmut<-c('0'=sum(wok2db_41$b[wok2db_41$field=='NR']=='0'),table(table(db2bel$bel$ut)))
 ddt$tput<-table(table(db2bel$bel$ut[db2bel$pend]))
 ddt$ut<-table(degree(mel2net$tput,gmode='graph'))
 ddt$bmcr<-table(table(db2bel$bel$cr))
@@ -1632,8 +1776,8 @@ if(F){
 
 rm(list=ls())
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData')
-cr<-droplevels(wok2db_41[wok2db_41$fields=='CR',c('id.','b')])
-py<-droplevels(wok2db_41[wok2db_41$fields=='PY',c('id.','b')])
+cr<-droplevels(wok2db_41[wok2db_41$field=='CR',c('id.','b')])
+py<-droplevels(wok2db_41[wok2db_41$field=='PY',c('id.','b')])
 crpy<-merge(cr,py,by='id.')
 names(crpy)<-c('ut','cr','py')
 crpyby<-split(crpy$cr,crpy$py,drop=T)
@@ -1651,8 +1795,8 @@ save(g41,file='/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/g41
 
 rm(list=ls())
 load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1980out/wok2db_80.RData')
-cr<-droplevels(wok2db_80[wok2db_80$fields=='CR',c('id.','b')])
-py<-droplevels(wok2db_80[wok2db_80$fields=='PY',c('id.','b')])
+cr<-droplevels(wok2db_80[wok2db_80$field=='CR',c('id.','b')])
+py<-droplevels(wok2db_80[wok2db_80$field=='PY',c('id.','b')])
 crpy<-merge(cr,py,by='id.')
 names(crpy)<-c('ut','cr','py')
 crpyby<-split(crpy$cr,crpy$py,drop=T)
@@ -1679,8 +1823,8 @@ load('/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/2015out/wok2db_15_7.
 
 wok2db_15<-rbind(wok2db_15_1,wok2db_15_2,wok2db_15_3,wok2db_15_4,wok2db_15_5,wok2db_15_6,wok2db_15_7)
 rm(list=ls()[grep('wok2db_15_',ls())])
-cr<-droplevels(wok2db_15[wok2db_15$fields=='CR',c('id.','b')])
-py<-droplevels(wok2db_15[wok2db_15$fields=='PY',c('id.','b')])
+cr<-droplevels(wok2db_15[wok2db_15$field=='CR',c('id.','b')])
+py<-droplevels(wok2db_15[wok2db_15$field=='PY',c('id.','b')])
 crpy<-merge(cr,py,by='id.')
 names(crpy)<-c('ut','cr','py')
 crpyby<-split(crpy$cr,crpy$py,drop=T)
@@ -1905,7 +2049,7 @@ if(F){
 	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/wok2db_41.RData")
 	load("/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/bel2mel_41.RData")
 	library(data.table)
-	py<-data.table(droplevels(wok2db_41[wok2db_41$fields=="PY",-2]),key="b.ind.")
+	py<-data.table(droplevels(wok2db_41[wok2db_41$field=="PY",-2]),key="b.ind.")
 	m<-list()
 	system.time(for(i in 1:dim(bel2mel$tpcrel)[1]) m[i]<-as.integer(as.character(py[bel2mel$tpcrel$x[[i]]]$b)))
 	bel2mel$tpcrel$py<-m
@@ -2053,10 +2197,10 @@ if(F){
 	load("SOCwok2db.RData")
 	comdb<-data.table(rbind(comdb,wok2db))
 	rm(wok2db)
-	setkey(comdb,fields,b.ind.)
+	setkey(comdb,field,b.ind.)
 	#comdb[,b:=as.character(comdb$b)]
-	#setkey(comdb,fields,b.ind.)
-	#comdb[J("CR"),b:=gsub("(\\w)","\\U\\1",sub(", DOI .+","",comdb$b[comdb$fields=="CR"]),perl=T)] #remove DOI & capitalize
+	#setkey(comdb,field,b.ind.)
+	#comdb[J("CR"),b:=gsub("(\\w)","\\U\\1",sub(", DOI .+","",comdb$b[comdb$field=="CR"]),perl=T)] #remove DOI & capitalize
 
 	pyj9<-droplevels(data.table(py=comdb["PY",b]$b,j9=comdb["NR",b]$b,key="py"))
 	(pyj9<-table(pyj9))
@@ -2105,11 +2249,11 @@ if(F){
 	dates<-sort(as.character(unique(comdb[J("PY")]$b)))
 	journals<-as.character(unique(comdb[J("J9")]$b))
 	index<-list()
-	setkey(comdb,fields,b)
+	setkey(comdb,field,b)
 	system.time(for(i in dates) for(j in journals) {cat("\r",i,j,"\t\t");index[[j]][[i]]<-intersect(comdb[J("PY",i)]$b.ind.,comdb[J("J9",j)]$b.ind.)})
 	index<-do.call(cbind,index)
 	save(index,file="index.RData")
-	setkey(comdb,b.ind.,fields)
+	setkey(comdb,b.ind.,field)
 
 	# load unicr
 
@@ -2118,7 +2262,7 @@ if(F){
 	u<-data.frame(yu=u[-71,],gain=diff(u$cbeg),loss=diff(u$cend),net=diff(u$cbeg)+diff(u$cend),p=u$yu[-71]+diff(u$cbeg)+diff(u$cend),e=u$yu[-71]+diff(u$cbeg)+diff(u$cend)-u$yu[-1])
 
 	batchs<-12000
-	setkey(comdb,b.ind.,fields,b)
+	setkey(comdb,b.ind.,field,b)
 	j<-1
 	rang<-list()
 	nun<-list()
