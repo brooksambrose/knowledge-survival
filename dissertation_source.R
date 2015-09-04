@@ -1,4 +1,4 @@
-wok2db.f<-function(
+wok2dbl.f<-function(
 	dir=stop("Choose input directory containing WOK batches.")
 	,out=stop("Specify output directory for your project.")
 	,art_rev_only=T
@@ -9,10 +9,10 @@ wok2db.f<-function(
 	,check.for.saved.output=F
 )
 {
-	if(check.for.saved.output) if(any(grepl('wok2db.RData',dir(recursive=T,full.names=T,ignore.case=T)))) {
-		warning('Loading and returning saved wok2db.RData.',call. = F)
-		load(dir(pattern='wok2db.RData',recursive=T,full.names=T,ignore.case=F)[1])
-		return(wok2db)
+	if(check.for.saved.output) if(any(grepl('wok2dbl.RData',dir(recursive=T,full.names=T,ignore.case=T)))) {
+		warning('Loading and returning saved wok2dbl.RData.',call. = F)
+		load(dir(pattern='wok2dbl.RData',recursive=T,full.names=T,ignore.case=F)[1])
+		return(wok2dbl)
 	}
 
 	#NEWER WOK Database Import
@@ -32,7 +32,7 @@ wok2db.f<-function(
 
 	n<-length(files)
 
-	wok2db<-list()
+	wok2dbl<-list()
 	for(i in files){
 		c<-c+1
 		if(verbose) {flush.console();cat("\r",round(c/n,3),i,sep=" ")}
@@ -64,39 +64,40 @@ wok2db.f<-function(
 			d<-d[dt]
 			}
 		}
-		wok2db[[i]]<-copy(d)
+		wok2dbl[[i]]<-copy(d)
 	}
-	wok2db<-rbindlist(wok2db)
-	setkey(wok2db,b.ind,field)
-	dup<-duplicated(wok2db)
+	wok2dbl<-rbindlist(wok2dbl)
+	setkey(wok2dbl,b.ind,field,b)
+	dup<-duplicated(wok2dbl)
 	if(any(dup)){
-		ud<-unique(wok2db$b.ind[dup])
+		ud<-unique(wok2dbl$b.ind[dup])
 		cat('\n\n',length(ud),' duplicate records detected and removed, e.g.:\n',sep='')
 		if(length(ud)>5) {cat(sample(ud,5),sep='\n')} else {cat(ud,sep='\n')}
-		wok2db<-unique(wok2db)
+		wok2dbl<-unique(wok2dbl)
 	}
-	wok2db<-droplevels(wok2db)
-	setnames(wok2db,c("b.ind","b"),c("id","val"))
-	if(save) save(wok2db,file=paste(out,.Platform$file.sep,"wok2db.RData",sep=""))
-	wok2db
+	wok2dbl<-droplevels(wok2dbl)
+	setnames(wok2dbl,c("b.ind","b"),c("id","val"))
+	if(save) save(wok2dbl,file=paste(out,.Platform$file.sep,"wok2dbl.RData",sep=""))
+	wok2dbl
 }
 
-jstor2db.f<-function(
+jstor2dbw.f<-function(
 	dir=stop("Choose input directory containing DFR.JSTOR.ORG batches of zip archives.")
 	,out=stop("Specify output directory for your project.")
+	,save=T
 	,sample.batches=T
 	,sample.size=1
 	,in.parallel=F # import batches in parallel
 	,drop.nchar1=T # drop ngrams of 1 character
 	,drop.freq1=T # drop ngrams that appear only once
-	,check.for.saved.output=F # will scan output directory for a 'jstor2db.RData' file, load it, and return it instead of running a new import
+	,check.for.saved.output=F # will scan output directory for a 'jstor2dbw.RData' file, load it, and return it instead of running a new import
 )
 {
 
-	if(check.for.saved.output) if(any(grepl('jstor2db.RData',dir(recursive=T,full.names=T,ignore.case=T)))) {
-		warning('Loading and returning saved jstor2db.RData.',call.=F)
-		load(dir(pattern='jstor2db.RData',full.names=T,recursive=T,ignore.case=F)[1])
-		return(wok2db)
+	if(check.for.saved.output) if(any(grepl('jstor2dbw.RData',dir(recursive=T,full.names=T,ignore.case=T)))) {
+		warning('Loading and returning saved jstor2dbw.RData.',call.=F)
+		load(dir(pattern='jstor2dbw.RData',full.names=T,recursive=T,ignore.case=F)[1])
+		return(jstor2dbw)
 	}
 
 	zips<-grep('\\.zip$',list.files(dir,full.names=T,recursive=T,include.dirs=T),value=T)
@@ -143,23 +144,23 @@ jstor2db.f<-function(
 		require(doParallel)
 		cl <- makeCluster(detectCores() )
 		registerDoParallel(cl, cores = detectCores() )
-		jstor2db <- foreach(i = zips,.packages = c('data.table','tm','SnowballC'),.inorder=F) %dopar% try(import.dfr.jstor.f(zip=i))
+		jstor2dbw <- foreach(i = zips,.packages = c('data.table','tm','SnowballC'),.inorder=F) %dopar% try(import.dfr.jstor.f(zip=i))
 		stopCluster(cl)
-	} else {jstor2db<-list();for(i in zips) jstor2db[[i]]<-try(import.dfr.jstor.f(zip=i))}
+	} else {jstor2dbw<-list();for(i in zips) jstor2dbw[[i]]<-try(import.dfr.jstor.f(zip=i))}
 
-jstor2db<-rbindlist(jstor2db[sapply(jstor2db,is.data.table)])
+jstor2dbw<-rbindlist(jstor2dbw[sapply(jstor2dbw,is.data.table)])
 
 	# condense vocab
-if(drop.nchar1) jstor2db[,bow:=list(lapply(bow,function(x) as.table(x[nchar(names(x))>1])))]
-if(drop.freq1) jstor2db[,bow:=list(lapply(bow,function(x) as.table(x[x>1])))]
-	vocab<-sort(unique(unlist(lapply(jstor2db$bow,function(x) names(x)))))
-jstor2db[,bow:=list(lapply(bow,function(x) {x<-matrix(c(which(vocab%in%names(x)),as.integer(x)),nrow=2);rownames(x)<-c('vocab.index','freq');x}))]
+if(drop.nchar1) jstor2dbw[,bow:=list(lapply(bow,function(x) as.table(x[nchar(names(x))>1])))]
+if(drop.freq1) jstor2dbw[,bow:=list(lapply(bow,function(x) as.table(x[x>1])))]
+	vocab<-sort(unique(unlist(lapply(jstor2dbw$bow,function(x) names(x)))))
+jstor2dbw[,bow:=list(lapply(bow,function(x) {x<-matrix(c(which(vocab%in%names(x)),as.integer(x)),byrow=TRUE,nrow=2);rownames(x)<-c('vocab.index','freq');x}))]
 
-	dfr.jour<-jstor2db[,.N,by=journaltitle]
+	dfr.jour<-jstor2dbw[,.N,by=journaltitle]
 	print(dfr.jour)
-	attributes(jstor2db)$vocab<-vocab
-	save(jstor2db,file=paste(out,'jstor2db.RData',sep=.Platform$file.sep))
-	jstor2db
+	attributes(jstor2dbw)$vocab<-vocab
+	if(save) save(jstor2dbw,file=paste(out,'jstor2dbw.RData',sep=.Platform$file.sep))
+	jstor2dbw
 }
 
 
@@ -172,12 +173,12 @@ cr2zcr.f<-function( #utility for resolving identity uncertainty for WOK CR field
 {
 require(stringdist)
 require(randomForest)
-load("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/wok2db.RData")
-if(!is.data.table(wok2db)) wok2db<-data.table(wok2db)
-setkey(wok2db,field,id)
+load("/Users/bambrose/Dropbox/2014-2015/Sprints/1/BOURDIEU, 1985, THEOR SOC/out/wok2dbl.RData")
+if(!is.data.table(wok2dbl)) wok2dbl<-data.table(wok2dbl)
+setkey(wok2dbl,field,id)
 
 ### impose formatting and nomenclature ###
-rawbel<-wok2db["CR",c(1,3),with=F] #delete
+rawbel<-wok2dbl["CR",c(1,3),with=F] #delete
 #save.rawbel<-copy(rawbel)
 setnames(rawbel,1:2,c("ut","cr"))
 rawbel[,`:=`(
@@ -733,8 +734,8 @@ den<-apply(coef,2,density)
 }
 }
 
-db2bel.f<-function(
-	wok2db
+dbl2bel.f<-function(
+	wok2dbl
 	,out=stop("Specify output directory for your project.")
 	,saved_recode=NULL
 	,save_og4recode=F
@@ -750,20 +751,20 @@ db2bel.f<-function(
 require(data.table)
 out
 
-### draw only citation edge information from wok2db ###
-wok2db<-data.table(wok2db)
-setkey(wok2db,field)
-db2bel<-wok2db["CR",list(id,val)]
-rm("wok2db")
+### draw only citation edge information from wok2dbl ###
+wok2dbl<-data.table(wok2dbl)
+setkey(wok2dbl,field)
+dbl2bel<-wok2dbl["CR",list(id,val)]
+rm("wok2dbl")
 
 ### impose formatting and nomenclature ###
-setnames(db2bel,c("ut","cr"))
-if(trim_doi) db2bel[,cr:=sub(", DOI .+","",cr)] #remove DOI
-if(capitalize) db2bel[,cr:=gsub("(\\w)","\\U\\1",cr,perl=T)] #capitalize
-if(trim_anon&capitalize) db2bel[,cr:=sub("^\\[ANONYMOUS\\], ","",cr)] #remove ANONYMOUS author
+setnames(dbl2bel,c("ut","cr"))
+if(trim_doi) dbl2bel[,cr:=sub(", DOI .+","",cr)] #remove DOI
+if(capitalize) dbl2bel[,cr:=gsub("(\\w)","\\U\\1",cr,perl=T)] #capitalize
+if(trim_anon&capitalize) dbl2bel[,cr:=sub("^\\[ANONYMOUS\\], ","",cr)] #remove ANONYMOUS author
 
 ### recoding ###
-setkey(db2bel,cr)
+setkey(dbl2bel,cr)
 if(save_og4recode){ # save original codes to disk
 	cat('\nSaving normalized original CR codes to pass to fuzzy set routine.')
 	original.cr<-unique(dob2bel$cr)
@@ -772,32 +773,32 @@ if(save_og4recode){ # save original codes to disk
 if(!is.null(saved_recode)){ # recode using fuzzy sets
 	lfs<-length(saved_recode)
 	cat('\nRecoding CR from',lfs,'sets.\n')
-	db2bel[,zcr:=cr]
+	dbl2bel[,zcr:=cr]
 	for(i in 1:lfs) {
 		cat('\r',round(i/lfs*100,4),'%\t\t',sep='')
 		ix<-saved_recode[[i]]
-		recode<-db2bel[ix,list(cr)][,.N,by=cr]
+		recode<-dbl2bel[ix,list(cr)][,.N,by=cr]
 		recode<-recode$cr[recode$N==max(recode$N)]
 		recode<-tolower(recode[which.min(nchar(recode))])
-		db2bel[ix,zcr:=recode]
+		dbl2bel[ix,zcr:=recode]
 	}
 	cat('\n')
 }
 ### pendants ###
 if(trim_pendants){
-db2bel[,pend:=!duplicated(cr)|duplicated(cr,fromLast=T)]
-if(!is.null(saved_recode)) db2bel[,zpend:=!duplicated(zcr)|duplicated(zcr,fromLast=T)]
+dbl2bel[,pend:=!(duplicated(cr)|duplicated(cr,fromLast=T))]
+if(!is.null(saved_recode)) dbl2bel[,zpend:=!(duplicated(zcr)|duplicated(zcr,fromLast=T))]
 }
 
 ### cut sample ###
-crd<-db2bel[,list(cr)][,.N,by=cr]
+crd<-dbl2bel[,list(cr)][,.N,by=cr]
 setkey(crd,N)
 if(!is.null(saved_recode)) {
-	setkey(db2bel,ut,zcr)
-	db2bel[,zdup:=duplicated(db2bel)]
-	zcrd<-db2bel[!db2bel$zdup,list(zcr)][,.N,by=zcr]
+	setkey(dbl2bel,ut,zcr)
+	dbl2bel[,zdup:=duplicated(dbl2bel)]
+	zcrd<-dbl2bel[!dbl2bel$zdup,list(zcr)][,.N,by=zcr]
 	setkey(zcrd,N)
-	setkey(db2bel,cr)
+	setkey(dbl2bel,cr)
 }
 
 if(cut_samp_def>0){
@@ -809,7 +810,7 @@ if(cut_samp_def>0){
 	if(u!=""){
 		u<-unlist(strsplit(u," "))
 		u<-as.integer(u)
-		if(any(is.na(u))) {stop("\nTry again.")} else {db2bel<-db2bel[!list(cut[u]$cr)]}
+		if(any(is.na(u))) {stop("\nTry again.")} else {dbl2bel<-dbl2bel[!list(cut[u]$cr)]}
 	}
 }
 
@@ -847,6 +848,7 @@ res$perc.change<-round(res$zcr/res$cr*100,5)
 res$alt.change<-res$perc.change-100
 }
 print(res)
+cat('\n')
 mres<-data.frame(case=
 	c('Pendants as % of total references'
 	 ,'Pendants as % of unique citations')
@@ -855,15 +857,15 @@ mres<-data.frame(case=
 )
 if(!is.null(saved_recode)) mres$zcr<-round(c(res$zcr[3]/res$zcr[1],res$zcr[3]/res$zcr[2])*100,4)
 print(mres)
-# db2bel[,`:=`(ut=factor(ut),cr=factor(cr))] # better to factor after selection is made
-# if(!is.null(saved_recode)) db2bel[,zcr:=factor(zcr)]
-save(db2bel,file=paste(out,.Platform$file.sep,"db2bel.RData",sep=""))
-db2bel
+# dbl2bel[,`:=`(ut=factor(ut),cr=factor(cr))] # better to factor after selection is made
+# if(!is.null(saved_recode)) dbl2bel[,zcr:=factor(zcr)]
+save(dbl2bel,file=paste(out,.Platform$file.sep,"dbl2bel.RData",sep=""))
+dbl2bel
 }
 
 
 bel2mel.f<-function(
-	db2bel=NULL
+	dbl2bel=NULL
 	,subset=NULL # a vector of UT
 	,type=c("utel","crel")
 	,out=stop("Specify output directory for your project.")
@@ -871,33 +873,37 @@ bel2mel.f<-function(
 )
 {
 	require(data.table)
-	if(ncol(db2bel)>2) stop('db2bel must be a bimodal edgelist as a two column data.table. Selection on pendants, etc. should be made prior to passing to bel2mel.f.')
+	if(ncol(dbl2bel)>2) stop('dbl2bel must be a bimodal edgelist as a two column data.table. Selection on pendants, etc. should be made prior to passing to bel2mel.f.')
 
-	setnames(db2bel,c('ut','cr'))
-	db2bel[,ut:=as.character(ut)]
-	db2bel[,cr:=as.character(cr)]
+	setnames(dbl2bel,c('ut','cr'))
+	dbl2bel[,ut:=as.character(ut)]
+	dbl2bel[,cr:=as.character(cr)]
 
 	bel2mel<-list()
 
-	if('utel'%in%type){
-		setkey(db2bel,ut,cr)
-		utd<-db2bel[,.N,by=ut]
-		setkey(utd,N,ut)
-		utiso<-utd[list(1),ut]
-		bel2mel$utel<-db2bel[!list(utiso),list(cr=combn(cr,m=2,FUN=sort,simplify=F)),by=ut]
-		bel2mel$utel[,`:=`(cr1=sapply(cr,function(x) x[1]),cr2=sapply(cr,function(x) x[2]))]
-		bel2mel$utel[,cr:=NULL]
-		bel2mel$utel<-bel2mel$utel[,list(ew=.N,ut=list(ut)),keyby=c('cr1','cr2')]
-	}
 	if('crel'%in%type){
-		setkey(db2bel,cr,ut)
-		crd<-db2bel[,.N,by=cr]
+		setkey(dbl2bel,ut,cr)
+		utd<-dbl2bel[,.N,by=ut]
+		setkey(utd,N,ut)
+		if(any(utd$N)>1) {
+		utiso<-utd[list(1),ut]
+		bel2mel$crel<-dbl2bel[!list(utiso),list(cr=combn(cr,m=2,FUN=sort,simplify=F)),by=ut]
+		bel2mel$crel[,`:=`(cr1=sapply(cr,function(x) x[1]),cr2=sapply(cr,function(x) x[2]))]
+		bel2mel$crel[,cr:=NULL]
+		bel2mel$crel<-bel2mel$crel[,list(ew=.N,ut=list(ut)),keyby=c('cr1','cr2')]
+		} else {bel2mel$crel<-'No connected crel.'}
+	}
+	if('utel'%in%type){
+		setkey(dbl2bel,cr,ut)
+		crd<-dbl2bel[,.N,by=cr]
 		setkey(crd,N,cr)
+		if(any(crd$N>1)) {
 		criso<-crd[list(1),cr]
-		bel2mel$crel<-db2bel[!list(criso),list(ut=combn(ut,m=2,FUN=sort,simplify=F)),by=cr]
-		bel2mel$crel[,`:=`(ut1=sapply(ut,function(x) x[1]),ut2=sapply(ut,function(x) x[2]))]
-		bel2mel$crel[,ut:=NULL]
-		bel2mel$crel<-bel2mel$crel[,list(ew=.N,cr=list(cr)),keyby=c('ut1','ut2')]
+		bel2mel$utel<-dbl2bel[!list(criso),list(ut=combn(ut,m=2,FUN=sort,simplify=F)),by=cr]
+		bel2mel$utel[,`:=`(ut1=sapply(ut,function(x) x[1]),ut2=sapply(ut,function(x) x[2]))]
+		bel2mel$utel[,ut:=NULL]
+		bel2mel$utel<-bel2mel$utel[,list(ew=.N,cr=list(cr)),keyby=c('ut1','ut2')]
+		} else {bel2mel$utel<-'No connected utel.'}
 	}
 	save(bel2mel,file='bel2mel.RData')
 	bel2mel
@@ -1112,7 +1118,7 @@ as.edgelist<-function(
 }
 
 plot.mode.projection<-function(
-	db2bel
+	dbl2bel
 	,m1.stub="^m1"
 	,out="/Users/bambrose/Dropbox/2013-2014/winter2014_isi_data/1941out/descriptive/" #may add a stub at the end of this line
 	,vcx=1
@@ -1441,7 +1447,7 @@ plotpois<-function(
 }
 
 subnet<-function(
-	db2bel=stop("Supply original db2bel object",call.=F)
+	dbl2bel=stop("Supply original dbl2bel object",call.=F)
 	,set=stop("set list(cr=incl cr,ut=incl ut,ncr=excl cr,nut=excl ut) and unused to NULL",call.=F)
 	,source=stop("Supply source",call.=F)
 )
@@ -1449,28 +1455,28 @@ subnet<-function(
 	require(network)
 	source(source)
 	#if(!all(c("bel2mel.f","mel2net.f")%in%ls())) stop("Load correct source")
-	#w<-!!sapply(lapply(db2bel$bel,"%in%",set),any)
+	#w<-!!sapply(lapply(dbl2bel$bel,"%in%",set),any)
 	#if(!sum(w)) stop("Not a subset of either mode of this edgelist")
-	#s<-set%in%db2bel$bel[,w]
+	#s<-set%in%dbl2bel$bel[,w]
 	#if(!all(s)) {
 	#	warning(paste(sum(!s),"or",round(sum(!s)/length(s)*100,1),"% of edges from subset are not in bel. First 10 excluded:"))
 	#	print(head(set[s],10))
 	#}
-	sub<-rep(T,dim(db2bel$bel)[1])
-	if(length(set$cr)) sub<-sub&db2bel$bel$cr%in%set$cr
-	if(length(set$ut)) sub<-sub&db2bel$bel$ut%in%set$ut
-	if(length(set$ncr)) sub<-sub&!db2bel$bel$cr%in%set$ncr
-	if(length(set$nut)) sub<-sub&!db2bel$bel$ut%in%set$nut
-	db2bel$bel<-db2bel$bel[sub,]
-	if("pend"%in%names(db2bel)) db2bel$pend<-db2bel$pend[sub]
-	cat("\n",nrow(db2bel$bel)," edges, ",length(unique(db2bel$bel$ut))," uts, and ",length(unique(db2bel$bel$cr)) ," crs fed to bel2mel.\n",sep="")
-	bel2mel<-bel2mel.f(db2bel,out=getwd())
+	sub<-rep(T,dim(dbl2bel$bel)[1])
+	if(length(set$cr)) sub<-sub&dbl2bel$bel$cr%in%set$cr
+	if(length(set$ut)) sub<-sub&dbl2bel$bel$ut%in%set$ut
+	if(length(set$ncr)) sub<-sub&!dbl2bel$bel$cr%in%set$ncr
+	if(length(set$nut)) sub<-sub&!dbl2bel$bel$ut%in%set$nut
+	dbl2bel$bel<-dbl2bel$bel[sub,]
+	if("pend"%in%names(dbl2bel)) dbl2bel$pend<-dbl2bel$pend[sub]
+	cat("\n",nrow(dbl2bel$bel)," edges, ",length(unique(dbl2bel$bel$ut))," uts, and ",length(unique(dbl2bel$bel$cr)) ," crs fed to bel2mel.\n",sep="")
+	bel2mel<-bel2mel.f(dbl2bel,out=getwd())
 	mel2net<-mel2net.f(bel2mel)
 	mel2net
 }
 
 dbl2w.f<-function(
-	wok2db
+	wok2dbl
 	,out=stop("Specify output directory")
 	,field=stop("field=c(\"field1\",\"field2\",...)")
 	,variations=NULL
@@ -1478,26 +1484,26 @@ dbl2w.f<-function(
 )
 {
 require(data.table)
-wok2db<-data.table(wok2db)
-setnames(wok2db,c("ut","field","b"))
-setkey(wok2db,field)
-wok2db<-wok2db[field]
-setkey(wok2db,field)
+wok2dbl<-data.table(wok2dbl)
+setnames(wok2dbl,c("ut","field","b"))
+setkey(wok2dbl,field)
+wok2dbl<-wok2dbl[field]
+setkey(wok2dbl,field)
 
 field<-tolower(field)
 field<-field[field!="ut"]
 
 l<-list()
 for(i in field){
-	l[[i]]<-wok2db[i=toupper(i)][j=list(ut,b)];setkey(l[[i]],ut);setnames(l[[i]],2,i)
+	l[[i]]<-wok2dbl[i=toupper(i)][j=list(ut,b)];setkey(l[[i]],ut);setnames(l[[i]],2,i)
 	if(i%in%c("cr","af")) l[[i]][,i:=factor(toupper(sub(", DOI .+","",l[[i]][[i]]))),with=F]
 	if(i=="af") l[[i]]<-l[[i]][i=!grepl("ANONYMOUS",l[[i]][[i]])]
 	l[[i]][,c(i):=type.convert(as.character(l[[i]][[i]]))]
 }
-rm(wok2db)
+rm(wok2dbl)
 
 if(is.null(variations)) {
-	cat("\nvariations=list(field1=db2bel_sets1,field2=db2bel_sets2,...)")
+	cat("\nvariations=list(field1=dbl2bel_sets1,field2=dbl2bel_sets2,...)")
 }
 else
 {
